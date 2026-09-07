@@ -9,7 +9,7 @@
 ## Hoạt động hoàn toàn offline
 - Toàn bộ 90 ngày, transcript, phrases, quiz, speaking prompts đều nằm trong website.
 - Mỗi câu tiếng Anh có nút hiện/ẩn bản dịch tiếng Việt; toàn bộ bản dịch nằm sẵn trong `translations.js`.
-- Trang Cài đặt cho phép chọn giọng tiếng Anh của thiết bị, chỉnh tốc độ, cao độ và tự động hiện bản dịch.
+- Trang Cài đặt cho phép chọn giọng tiếng Anh của thiết bị, chỉnh tốc độ, cao độ và tự động hiện bản dịch. Ứng dụng ưu tiên `Google US English — en-US` khi có sẵn, nếu không sẽ dùng giọng mặc định của thiết bị.
 - Listening, shadowing và “video lesson” dùng giọng `SpeechSynthesis` có sẵn trên thiết bị.
 - Chế độ shadowing đọc lần lượt từng câu và cho phép chỉnh khoảng nghỉ để nói lại.
 - Ghi âm phần luyện nói theo từng ngày, nghe lại và lưu trực tiếp trên thiết bị bằng IndexedDB.

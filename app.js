@@ -15,7 +15,7 @@ let recordingStartedAt=0;
 let recordingAudioUrl='';
 let shadowingRun=0;
 let shadowingTimer=null;
-const defaultSettings={voiceURI:'',rateMultiplier:1,pitch:1,showTranslations:false,shadowPause:4};
+const defaultSettings={voiceURI:'',preferGoogleUS:true,rateMultiplier:1,pitch:1,showTranslations:false,shadowPause:4};
 let settings={...defaultSettings,...JSON.parse(localStorage.getItem('e90-settings')||'{}')};
 
 const slideTemplates = (L)=>[
@@ -51,10 +51,18 @@ function toggleTranslation(button){
   button.classList.toggle('active',willShow);
 }
 
+function preferredVoice(voices=speechSynthesis.getVoices()){
+  const savedVoice=voices.find(voice=>voice.voiceURI===settings.voiceURI);
+  if(savedVoice) return savedVoice;
+  if(!settings.voiceURI&&settings.preferGoogleUS){
+    return voices.find(voice=>voice.name.trim().toLowerCase()==='google us english'&&voice.lang.toLowerCase().replace('_','-')==='en-us')||null;
+  }
+  return null;
+}
 function speak(text, rate=0.9, onEnd){
   speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(text);
-  const selectedVoice=speechSynthesis.getVoices().find(voice=>voice.voiceURI===settings.voiceURI);
+  const selectedVoice=preferredVoice();
   if(selectedVoice) u.voice=selectedVoice;
   u.lang=selectedVoice?.lang||'en-US';
   u.rate=Math.min(2,Math.max(.5,rate*settings.rateMultiplier));
@@ -260,9 +268,12 @@ function loadVoiceOptions(){
   if(!select) return;
   const voices=speechSynthesis.getVoices().filter(voice=>voice.lang.toLowerCase().startsWith('en'));
   select.innerHTML='<option value="">Giọng mặc định của thiết bị</option>'+voices.map(voice=>`<option value="${escapeHtml(voice.voiceURI)}">${escapeHtml(voice.name)} — ${escapeHtml(voice.lang)}${voice.localService?' (offline)':''}</option>`).join('');
-  if(!settings.voiceURI||voices.some(voice=>voice.voiceURI===settings.voiceURI)) select.value=settings.voiceURI;
-  else if(voices.length){settings.voiceURI='';select.value='';saveSettings();}
-  document.getElementById('voiceStatus').textContent=voices.length?`${voices.length} giọng tiếng Anh có sẵn trên thiết bị`:'Đang tải danh sách giọng nói của thiết bị…';
+  const selectedVoice=preferredVoice(voices);
+  if(selectedVoice) select.value=selectedVoice.voiceURI;
+  else if(settings.voiceURI&&voices.length){settings.voiceURI='';settings.preferGoogleUS=false;select.value='';saveSettings();}
+  else select.value='';
+  const autoGoogle=selectedVoice&&!settings.voiceURI&&settings.preferGoogleUS;
+  document.getElementById('voiceStatus').textContent=voices.length?`${voices.length} giọng tiếng Anh có sẵn trên thiết bị${autoGoogle?' • Đang ưu tiên Google US English':''}`:'Đang tải danh sách giọng nói của thiết bị…';
 }
 function syncSettingsControls(){
   document.getElementById('rateSetting').value=settings.rateMultiplier;
@@ -289,7 +300,7 @@ function closeSettings(){
   render();
   window.scrollTo({top:0,behavior:'smooth'});
 }
-function setVoice(value){settings.voiceURI=value;saveSettings();}
+function setVoice(value){settings.voiceURI=value;settings.preferGoogleUS=false;saveSettings();}
 function setRate(value){settings.rateMultiplier=Number(value);document.getElementById('rateValue').textContent=`${settings.rateMultiplier.toFixed(2)}×`;saveSettings();}
 function setPitch(value){settings.pitch=Number(value);document.getElementById('pitchValue').textContent=settings.pitch.toFixed(2);saveSettings();}
 function setShadowPause(value){settings.shadowPause=Number(value);document.getElementById('shadowPauseValue').textContent=`${settings.shadowPause} giây`;saveSettings();}
