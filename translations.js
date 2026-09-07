@@ -306,6 +306,76 @@ const E90_VI = (() => {
     ]
   };
 
+  const conversationLines = {
+    'The main reason is…': {en:'The main reason is that we need a solution the whole team can support.',vi:'Lý do chính là chúng ta cần một giải pháp mà cả đội có thể ủng hộ.'},
+    'For example…': {en:'For example, we handled a similar situation last month by testing with a small group first.',vi:'Ví dụ, tháng trước chúng ta đã xử lý một tình huống tương tự bằng cách thử nghiệm với một nhóm nhỏ trước.'},
+    'If I understand correctly…': {en:'If I understand correctly, our goal is to agree on a practical solution today.',vi:'Nếu tôi hiểu đúng, mục tiêu của chúng ta là thống nhất một giải pháp thực tế trong hôm nay.'},
+    'Could you clarify…?': {en:'Could you clarify which result is most important to the customer?',vi:'Bạn có thể làm rõ kết quả nào là quan trọng nhất đối với khách hàng không?'},
+    'One option would be to…': {en:'One option would be to run a two-week pilot before the full launch.',vi:'Một phương án là chạy thử nghiệm trong hai tuần trước khi ra mắt toàn bộ.'},
+    'I’d recommend…': {en:'I’d recommend validating our assumptions with three customers this week.',vi:'Tôi đề xuất kiểm chứng các giả định của chúng ta với ba khách hàng trong tuần này.'},
+    'The main concern is…': {en:'The main concern is that we may change too much so close to the deadline.',vi:'Mối lo ngại chính là chúng ta có thể thay đổi quá nhiều khi đã gần đến hạn chót.'},
+    'What I mean is…': {en:'What I mean is that we should start small and measure the result.',vi:'Ý tôi là chúng ta nên bắt đầu ở quy mô nhỏ và đo lường kết quả.'},
+    'Let me put it another way…': {en:'Let me put it another way: fewer features will help us deliver a more stable release.',vi:'Để tôi diễn đạt theo cách khác: ít tính năng hơn sẽ giúp chúng ta bàn giao một bản phát hành ổn định hơn.'},
+    'Based on what we know right now…': {en:'Based on what we know right now, option A has the lowest risk.',vi:'Dựa trên những gì chúng ta biết hiện giờ, phương án A có rủi ro thấp nhất.'},
+    'The next step is…': {en:'The next step is to assign an owner and prepare a prototype by Friday.',vi:'Bước tiếp theo là chỉ định người phụ trách và chuẩn bị bản mẫu trước thứ Sáu.'},
+    'To summarize…': {en:'To summarize, we will test the smaller plan first and review the feedback on Monday.',vi:'Tóm lại, chúng ta sẽ thử kế hoạch nhỏ hơn trước và xem lại phản hồi vào thứ Hai.'},
+    'That’s a fair question.': {en:'That’s a fair question. Let me explain the trade-off behind this decision.',vi:'Đó là một câu hỏi hợp lý. Để tôi giải thích sự đánh đổi đằng sau quyết định này.'},
+    'I see your point, but…': {en:'I see your point, but another delay could negatively affect our customers.',vi:'Tôi hiểu ý bạn, nhưng một lần trì hoãn nữa có thể ảnh hưởng tiêu cực đến khách hàng.'},
+    'I agree to some extent, however…': {en:'I agree to some extent; however, we still need evidence before changing the plan.',vi:'Tôi đồng ý ở một mức độ nào đó; tuy nhiên, chúng ta vẫn cần bằng chứng trước khi thay đổi kế hoạch.'},
+    'What problem are we trying to solve?': {en:'What problem are we trying to solve for the customer in this situation?',vi:'Trong tình huống này, chúng ta đang cố gắng giải quyết vấn đề gì cho khách hàng?'},
+    'How will we know if this is successful?': {en:'How will we know if this is successful after the first month?',vi:'Làm sao chúng ta biết việc này thành công sau tháng đầu tiên?'},
+    'We’ve run into an issue with…': {en:'We’ve run into an issue with the latest build, and two important tests are failing.',vi:'Chúng ta đã gặp một vấn đề với bản dựng mới nhất và hai kiểm thử quan trọng đang thất bại.'},
+    'We’re still on track to…': {en:'We’re still on track to launch next Tuesday if the final tests pass.',vi:'Chúng ta vẫn đang đúng tiến độ để ra mắt vào thứ Ba tới nếu các kiểm thử cuối cùng đạt yêu cầu.'},
+    'I don’t have the exact answer yet, but…': {en:'I don’t have the exact answer yet, but I can confirm it with the team this afternoon.',vi:'Tôi chưa có câu trả lời chính xác, nhưng tôi có thể xác nhận với đội vào chiều nay.'},
+    'Let me give you a quick update.': {en:'Let me give you a quick update. The design is approved, and development is halfway complete.',vi:'Để tôi cập nhật nhanh cho bạn. Thiết kế đã được duyệt và việc phát triển đã hoàn thành một nửa.'},
+    'One thing I learned was…': {en:'One thing I learned was to confirm the owner and deadline at the end of every meeting.',vi:'Một điều tôi đã học được là xác nhận người phụ trách và thời hạn vào cuối mỗi cuộc họp.'},
+    'Looking back, I would…': {en:'Looking back, I would involve real users earlier in the process.',vi:'Nhìn lại, tôi sẽ cho người dùng thực tế tham gia quy trình sớm hơn.'},
+    'What I’m trying to achieve is…': {en:'What I’m trying to achieve is a simple and reliable experience for every customer.',vi:'Điều tôi đang cố gắng đạt được là một trải nghiệm đơn giản và đáng tin cậy cho mọi khách hàng.'},
+    'The biggest challenge is…': {en:'The biggest challenge is coordinating three teams within a tight schedule.',vi:'Thách thức lớn nhất là phối hợp ba đội trong một lịch trình gấp.'},
+    'We have a couple of options.': {en:'We have a couple of options. We can reduce the scope or move the delivery date.',vi:'Chúng ta có một vài phương án. Chúng ta có thể giảm phạm vi hoặc dời ngày bàn giao.'},
+    'The reason I prefer this option is…': {en:'The reason I prefer this option is that it lets us keep our commitment to the customer.',vi:'Lý do tôi ưu tiên phương án này là nó giúp chúng ta giữ đúng cam kết với khách hàng.'},
+    'Before we decide…': {en:'Before we decide, let’s review the risks and confirm who is available.',vi:'Trước khi chúng ta quyết định, hãy xem lại các rủi ro và xác nhận ai có thể tham gia.'},
+    'Let’s move on to…': {en:'Let’s move on to the testing plan and the remaining deadlines.',vi:'Hãy chuyển sang kế hoạch kiểm thử và các thời hạn còn lại.'},
+    'I’d like to start by…': {en:'I’d like to start by explaining the current situation and our main goal.',vi:'Tôi muốn bắt đầu bằng việc giải thích tình hình hiện tại và mục tiêu chính của chúng ta.'},
+    'The main point is…': {en:'The main point is that we need one clear action and one responsible owner.',vi:'Ý chính là chúng ta cần một hành động rõ ràng và một người chịu trách nhiệm.'},
+    'From my perspective…': {en:'From my perspective, we should choose the option with the lowest customer risk.',vi:'Theo quan điểm của tôi, chúng ta nên chọn phương án có rủi ro thấp nhất đối với khách hàng.'}
+  };
+
+  const interviewPrompts = {
+    'The main reason is…': {en:'Why was that decision important?',vi:'Tại sao quyết định đó lại quan trọng?'},
+    'For example…': {en:'Can you give me a specific example?',vi:'Bạn có thể cho tôi một ví dụ cụ thể không?'},
+    'If I understand correctly…': {en:'How do you make sure everyone has the same understanding?',vi:'Bạn làm thế nào để đảm bảo mọi người có cùng cách hiểu?'},
+    'Could you clarify…?': {en:'What do you do when a requirement is unclear?',vi:'Bạn làm gì khi một yêu cầu chưa rõ ràng?'},
+    'One option would be to…': {en:'How would you explore a possible solution?',vi:'Bạn sẽ tìm hiểu một giải pháp khả thi như thế nào?'},
+    'I’d recommend…': {en:'What advice would you give the team?',vi:'Bạn sẽ đưa ra lời khuyên gì cho đội?'},
+    'The main concern is…': {en:'What was the most important risk you noticed?',vi:'Rủi ro quan trọng nhất mà bạn nhận thấy là gì?'},
+    'What I mean is…': {en:'How would you explain your idea more clearly?',vi:'Bạn sẽ giải thích ý tưởng của mình rõ ràng hơn như thế nào?'},
+    'Let me put it another way…': {en:'What would you say if the listener did not understand?',vi:'Bạn sẽ nói gì nếu người nghe chưa hiểu?'},
+    'Based on what we know right now…': {en:'How do you make a decision with incomplete information?',vi:'Bạn đưa ra quyết định thế nào khi thông tin chưa đầy đủ?'},
+    'The next step is…': {en:'What would you do immediately after the discussion?',vi:'Bạn sẽ làm gì ngay sau cuộc thảo luận?'},
+    'To summarize…': {en:'How would you close the meeting clearly?',vi:'Bạn sẽ kết thúc cuộc họp một cách rõ ràng như thế nào?'},
+    'That’s a fair question.': {en:'How do you respond to a challenging question?',vi:'Bạn phản hồi một câu hỏi khó như thế nào?'},
+    'I see your point, but…': {en:'How would you disagree with a manager or client?',vi:'Bạn sẽ bày tỏ bất đồng với quản lý hoặc khách hàng như thế nào?'},
+    'I agree to some extent, however…': {en:'What would you say if you only partly agreed?',vi:'Bạn sẽ nói gì nếu chỉ đồng ý một phần?'},
+    'What problem are we trying to solve?': {en:'How do you begin working on a new issue?',vi:'Bạn bắt đầu xử lý một vấn đề mới như thế nào?'},
+    'How will we know if this is successful?': {en:'How do you define success for a project?',vi:'Bạn xác định thành công của một dự án như thế nào?'},
+    'We’ve run into an issue with…': {en:'How would you describe an unexpected blocker?',vi:'Bạn sẽ mô tả một trở ngại bất ngờ như thế nào?'},
+    'We’re still on track to…': {en:'How would you report the status of a deadline?',vi:'Bạn sẽ báo cáo tình trạng thời hạn như thế nào?'},
+    'I don’t have the exact answer yet, but…': {en:'What do you say when you do not know the exact answer?',vi:'Bạn nói gì khi chưa biết câu trả lời chính xác?'},
+    'Let me give you a quick update.': {en:'How would you begin a short status update?',vi:'Bạn sẽ bắt đầu một bản cập nhật tình hình ngắn như thế nào?'},
+    'One thing I learned was…': {en:'What was the key lesson from that experience?',vi:'Bài học chính từ trải nghiệm đó là gì?'},
+    'Looking back, I would…': {en:'What would you do differently next time?',vi:'Lần sau bạn sẽ làm gì khác đi?'},
+    'What I’m trying to achieve is…': {en:'What is your current professional goal?',vi:'Mục tiêu nghề nghiệp hiện tại của bạn là gì?'},
+    'The biggest challenge is…': {en:'What made that project especially difficult?',vi:'Điều gì khiến dự án đó đặc biệt khó khăn?'},
+    'We have a couple of options.': {en:'How would you present different choices to the team?',vi:'Bạn sẽ trình bày các lựa chọn khác nhau với đội như thế nào?'},
+    'The reason I prefer this option is…': {en:'How would you explain your preferred solution?',vi:'Bạn sẽ giải thích giải pháp mình ưu tiên như thế nào?'},
+    'Before we decide…': {en:'What should the team check before making a decision?',vi:'Đội nên kiểm tra điều gì trước khi đưa ra quyết định?'},
+    'Let’s move on to…': {en:'How would you guide a meeting to the next topic?',vi:'Bạn sẽ dẫn dắt cuộc họp sang chủ đề tiếp theo như thế nào?'},
+    'I’d like to start by…': {en:'How would you open a presentation or meeting?',vi:'Bạn sẽ mở đầu một bài thuyết trình hoặc cuộc họp như thế nào?'},
+    'The main point is…': {en:'How would you emphasize your most important message?',vi:'Bạn sẽ nhấn mạnh thông điệp quan trọng nhất như thế nào?'},
+    'From my perspective…': {en:'How would you express your personal view professionally?',vi:'Bạn sẽ thể hiện quan điểm cá nhân một cách chuyên nghiệp như thế nào?'}
+  };
+
   const quiz = {
     'What should you focus on first when speaking?': 'Khi nói, trước tiên bạn nên tập trung vào điều gì?',
     'If you forget a word, what should you do?': 'Nếu quên một từ, bạn nên làm gì?',
@@ -417,5 +487,28 @@ const E90_VI = (() => {
     return pair(`${lesson.framework.name}: ${lesson.framework.steps}`, `${lesson.framework.name}: ${frameworkSteps[lesson.framework.steps]}`);
   }
 
-  return {topics, phases, frameworkSteps, phrases, phraseExamples, quiz, topicVi, objective, listening, shadowing, speaking, challenge, title, framework};
+  function conversation(lesson) {
+    const isInterview = lesson.day >= 60 && lesson.day < 75;
+    const isImmersion = lesson.day >= 75;
+    const roles = isInterview ? ['Người phỏng vấn', 'Bạn'] : ['Đồng nghiệp', 'Bạn'];
+    const scenarioEn = isInterview
+      ? `You and a colleague are role-playing the interview topic “${topic(lesson)}”.`
+      : isImmersion
+        ? `You and a colleague are role-playing the work situation “${topic(lesson)}”.`
+        : `You and a colleague are discussing “${topic(lesson)}” in a real work meeting.`;
+    const scenarioVi = isInterview
+      ? `Bạn và một đồng nghiệp đang đóng vai để luyện chủ đề phỏng vấn “${topicVi(lesson)}”.`
+      : isImmersion
+        ? `Bạn và một đồng nghiệp đang đóng vai tình huống công việc “${topicVi(lesson)}”.`
+        : `Bạn và một đồng nghiệp đang thảo luận về “${topicVi(lesson)}” trong một cuộc họp thực tế.`;
+    const lines = isInterview
+      ? lesson.phrases.flatMap(phrase => [
+          {speaker: roles[0], ...interviewPrompts[phrase]},
+          {speaker: roles[1], ...conversationLines[phrase]}
+        ])
+      : lesson.phrases.map((phrase, index) => ({speaker: roles[index % roles.length], ...conversationLines[phrase]}));
+    return {context: pair(scenarioEn, scenarioVi), lines};
+  }
+
+  return {topics, phases, frameworkSteps, phrases, phraseExamples, quiz, topicVi, objective, listening, shadowing, speaking, challenge, title, framework, conversation};
 })();

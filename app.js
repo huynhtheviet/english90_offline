@@ -336,6 +336,9 @@ function render(){
   document.getElementById('objective').innerHTML=translationList(E90_VI.objective(L),'hero-translation');
   document.getElementById('framework').innerHTML=translationItem(E90_VI.framework(L),'framework-translation');
   document.getElementById('phrases').innerHTML=L.phrases.map(phraseBlock).join('');
+  const conversation=E90_VI.conversation(L);
+  document.getElementById('conversationContext').innerHTML=translationItem(conversation.context,'conversation-context');
+  document.getElementById('conversation').innerHTML=conversation.lines.map(line=>`<div class="conversation-line ${line.speaker==='Bạn'?'from-you':'from-partner'}"><div class="speaker-avatar" aria-hidden="true">${line.speaker==='Bạn'?'B':line.speaker==='Người phỏng vấn'?'P':'Đ'}</div><div class="conversation-bubble"><div class="speaker-name">${escapeHtml(line.speaker)}</div>${translationItem({en:line.en,vi:line.vi},'conversation-sentence',audioButton(line.en,'Nghe câu giao tiếp'))}</div></div>`).join('');
   document.getElementById('listeningText').innerHTML=translationList(E90_VI.listening(L));
   document.getElementById('shadow').innerHTML=E90_VI.shadowing(L).map((item,index)=>translationItem(item,'',`<button type="button" class="audio-btn" aria-label="Nghe riêng câu này" title="Nghe riêng câu này" onclick="playShadowSentence(${index})">▶</button>`)).join('');
   document.getElementById('speaking').innerHTML=translationList(E90_VI.speaking(L));
