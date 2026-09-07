@@ -40,6 +40,21 @@ function translationItem(item, className='', extraAction=''){
 function translationList(items, className=''){
   return items.map(item=>translationItem(item,className)).join('');
 }
+function audioButton(text,label='Phát câu tiếng Anh'){
+  return `<button type="button" class="audio-btn" aria-label="${label}" title="${label}" onclick="speak(${escapeHtml(JSON.stringify(text))})">▶</button>`;
+}
+function phraseBlock(phrase){
+  const examples=E90_VI.phraseExamples[phrase]||[];
+  return `<div class="phrase-card">${translationItem(
+    {en:phrase,vi:E90_VI.phrases[phrase]},
+    'phrase',
+    `${phraseStarButton(phrase)}${audioButton(phrase)}`
+  )}<details class="phrase-examples"><summary><span>Ví dụ áp dụng</span><span class="example-count">${examples.length} câu</span></summary><div class="phrase-example-list">${examples.map((example,index)=>translationItem(
+    {en:`${index+1}. ${example.en}`,vi:`${index+1}. ${example.vi}`},
+    'phrase-example',
+    audioButton(example.en,'Nghe câu ví dụ')
+  )).join('')}</div></details></div>`;
+}
 function toggleTranslation(button){
   const item=button.closest('.translation-item');
   const translation=item.querySelector(':scope > .vi-translation');
@@ -320,11 +335,7 @@ function render(){
   document.getElementById('title').innerHTML=translationItem(E90_VI.title(L),'hero-translation');
   document.getElementById('objective').innerHTML=translationList(E90_VI.objective(L),'hero-translation');
   document.getElementById('framework').innerHTML=translationItem(E90_VI.framework(L),'framework-translation');
-  document.getElementById('phrases').innerHTML=L.phrases.map(p=>translationItem(
-    {en:p,vi:E90_VI.phrases[p]},
-    'phrase',
-    `${phraseStarButton(p)}<button type="button" class="audio-btn" aria-label="Phát câu tiếng Anh" onclick='speak(${JSON.stringify(p)})'>▶</button>`
-  )).join('');
+  document.getElementById('phrases').innerHTML=L.phrases.map(phraseBlock).join('');
   document.getElementById('listeningText').innerHTML=translationList(E90_VI.listening(L));
   document.getElementById('shadow').innerHTML=E90_VI.shadowing(L).map((item,index)=>translationItem(item,'',`<button type="button" class="audio-btn" aria-label="Nghe riêng câu này" title="Nghe riêng câu này" onclick="playShadowSentence(${index})">▶</button>`)).join('');
   document.getElementById('speaking').innerHTML=translationList(E90_VI.speaking(L));

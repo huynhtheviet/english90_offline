@@ -14,6 +14,7 @@
 - Chế độ shadowing đọc lần lượt từng câu và cho phép chỉnh khoảng nghỉ để nói lại.
 - Ghi âm phần luyện nói theo từng ngày, nghe lại và lưu trực tiếp trên thiết bị bằng IndexedDB.
 - Đánh dấu phrase bằng biểu tượng sao để đưa vào sổ ôn tập; lịch ôn cách quãng là 1, 3, 7, 14 và 30 ngày.
+- Mỗi useful phrase có ít nhất 3 ví dụ công việc thực tế, kèm nút nghe và bản dịch tiếng Việt có sẵn.
 - Mỗi ngày có một quiz riêng dựa trên chủ đề, framework và phrase của bài học đó.
 - Không cần YouTube, API hay tài khoản bên ngoài.
 
