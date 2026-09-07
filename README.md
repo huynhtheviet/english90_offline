@@ -11,6 +11,10 @@
 - Mỗi câu tiếng Anh có nút hiện/ẩn bản dịch tiếng Việt; toàn bộ bản dịch nằm sẵn trong `translations.js`.
 - Trang Cài đặt cho phép chọn giọng tiếng Anh của thiết bị, chỉnh tốc độ, cao độ và tự động hiện bản dịch.
 - Listening, shadowing và “video lesson” dùng giọng `SpeechSynthesis` có sẵn trên thiết bị.
+- Chế độ shadowing đọc lần lượt từng câu và cho phép chỉnh khoảng nghỉ để nói lại.
+- Ghi âm phần luyện nói theo từng ngày, nghe lại và lưu trực tiếp trên thiết bị bằng IndexedDB.
+- Đánh dấu phrase bằng biểu tượng sao để đưa vào sổ ôn tập; lịch ôn cách quãng là 1, 3, 7, 14 và 30 ngày.
+- Mỗi ngày có một quiz riêng dựa trên chủ đề, framework và phrase của bài học đó.
 - Không cần YouTube, API hay tài khoản bên ngoài.
 
 ## Nếu trình duyệt chặn một số tính năng khi mở file trực tiếp

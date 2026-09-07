@@ -3,7 +3,19 @@ let current = Number(localStorage.getItem('e90-current')||1);
 let progress = JSON.parse(localStorage.getItem('e90-progress')||'{}');
 let notes = JSON.parse(localStorage.getItem('e90-notes')||'{}');
 let slideIndex=0;
-const defaultSettings={voiceURI:'',rateMultiplier:1,pitch:1,showTranslations:false};
+let currentQuiz=[];
+let phrasebook=JSON.parse(localStorage.getItem('e90-phrasebook')||'{}');
+let reviewQueue=[];
+let reviewIndex=0;
+let mediaRecorder=null;
+let recordingStream=null;
+let recordingChunks=[];
+let recordingTimer=null;
+let recordingStartedAt=0;
+let recordingAudioUrl='';
+let shadowingRun=0;
+let shadowingTimer=null;
+const defaultSettings={voiceURI:'',rateMultiplier:1,pitch:1,showTranslations:false,shadowPause:4};
 let settings={...defaultSettings,...JSON.parse(localStorage.getItem('e90-settings')||'{}')};
 
 const slideTemplates = (L)=>[
@@ -39,7 +51,7 @@ function toggleTranslation(button){
   button.classList.toggle('active',willShow);
 }
 
-function speak(text, rate=0.9){
+function speak(text, rate=0.9, onEnd){
   speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(text);
   const selectedVoice=speechSynthesis.getVoices().find(voice=>voice.voiceURI===settings.voiceURI);
@@ -47,17 +59,209 @@ function speak(text, rate=0.9){
   u.lang=selectedVoice?.lang||'en-US';
   u.rate=Math.min(2,Math.max(.5,rate*settings.rateMultiplier));
   u.pitch=settings.pitch;
+  if(onEnd){u.onend=onEnd;u.onerror=onEnd;}
   speechSynthesis.speak(u);
 }
 function stopSpeak(){speechSynthesis.cancel();}
+
+function phraseStarButton(phrase){
+  const saved=!!phrasebook[phrase];
+  return `<button type="button" class="star-btn${saved?' active':''}" aria-label="${saved?'Bỏ khỏi sổ phrase':'Lưu vào sổ phrase'}" title="${saved?'Bỏ khỏi sổ phrase':'Lưu vào sổ phrase'}" onclick='togglePhrase(${JSON.stringify(phrase)},this)'>${saved?'★':'☆'}</button>`;
+}
+function savePhrasebook(){localStorage.setItem('e90-phrasebook',JSON.stringify(phrasebook));updateReviewBadge();}
+function togglePhrase(phrase,button){
+  if(phrasebook[phrase]) delete phrasebook[phrase];
+  else phrasebook[phrase]={vi:E90_VI.phrases[phrase],stage:0,nextReview:Date.now(),reviews:0};
+  savePhrasebook();
+  const saved=!!phrasebook[phrase];
+  button.textContent=saved?'★':'☆';
+  button.classList.toggle('active',saved);
+  button.setAttribute('aria-label',saved?'Bỏ khỏi sổ phrase':'Lưu vào sổ phrase');
+  button.setAttribute('title',saved?'Bỏ khỏi sổ phrase':'Lưu vào sổ phrase');
+}
+function duePhrases(){return Object.keys(phrasebook).filter(phrase=>(phrasebook[phrase].nextReview||0)<=Date.now());}
+function updateReviewBadge(){
+  const badge=document.getElementById('reviewBadge');
+  if(!badge) return;
+  const count=duePhrases().length;
+  badge.textContent=count;
+  badge.hidden=!count;
+}
+function formatReviewDate(timestamp){
+  if(!timestamp||timestamp<=Date.now()) return 'Đến hạn ôn';
+  return `Ôn ${new Date(timestamp).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}`;
+}
+function openReview(reviewAll=false){
+  stopSpeak();saveNote();stopShadowingPractice();
+  document.getElementById('lessonView').hidden=true;
+  document.getElementById('settingsPage').hidden=true;
+  document.getElementById('reviewPage').hidden=false;
+  reviewQueue=(reviewAll?Object.keys(phrasebook):duePhrases()).sort((a,b)=>(phrasebook[a].nextReview||0)-(phrasebook[b].nextReview||0));
+  reviewIndex=0;renderReviewPage();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function closeReview(){
+  stopSpeak();
+  document.getElementById('reviewPage').hidden=true;
+  document.getElementById('lessonView').hidden=false;
+  render();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function renderReviewPage(){
+  const practice=document.getElementById('reviewPractice');
+  const remaining=reviewQueue.length-reviewIndex;
+  document.getElementById('reviewSummary').textContent=`${Object.keys(phrasebook).length} phrase đã lưu • ${duePhrases().length} phrase đến hạn`;
+  if(remaining>0){
+    const phrase=reviewQueue[reviewIndex],entry=phrasebook[phrase];
+    practice.innerHTML=`<div class="review-progress">Còn ${remaining} phrase</div><div class="review-prompt">Hãy nói câu tiếng Anh tương ứng:</div><div class="review-front">${escapeHtml(entry.vi)}</div><button class="primary" id="revealReviewButton" onclick="revealReviewAnswer()">Hiện đáp án</button><div id="reviewAnswer" hidden><div class="review-answer">${escapeHtml(phrase)} <button class="audio-btn" onclick='speak(${JSON.stringify(phrase)})'>▶</button></div><div class="review-grades"><button onclick="gradePhrase('again')">Chưa nhớ</button><button onclick="gradePhrase('hard')">Khó</button><button class="primary" onclick="gradePhrase('good')">Đã nhớ</button></div></div>`;
+  }else if(Object.keys(phrasebook).length){
+    practice.innerHTML='<div class="review-empty"><div>🎉</div><h2>Đã ôn xong hôm nay</h2><p>Không còn phrase nào đến hạn.</p><button class="secondary" onclick="openReview(true)">Ôn lại tất cả</button></div>';
+  }else{
+    practice.innerHTML='<div class="review-empty"><div>⭐</div><h2>Sổ phrase đang trống</h2><p>Nhấn biểu tượng ☆ cạnh một phrase trong bài học để lưu lại.</p><button class="secondary" onclick="closeReview()">Tìm phrase để học</button></div>';
+  }
+  const library=document.getElementById('phraseLibrary');
+  library.innerHTML=Object.entries(phrasebook).sort((a,b)=>(a[1].nextReview||0)-(b[1].nextReview||0)).map(([phrase,entry])=>`<div class="library-item"><div><b>${escapeHtml(phrase)}</b><div class="small">${escapeHtml(entry.vi)} • ${formatReviewDate(entry.nextReview)}</div></div><button class="remove-phrase" aria-label="Bỏ phrase" title="Bỏ phrase" onclick='removePhrase(${JSON.stringify(phrase)})'>×</button></div>`).join('')||'<p class="small">Chưa có phrase nào được lưu.</p>';
+  updateReviewBadge();
+}
+function revealReviewAnswer(){
+  document.getElementById('revealReviewButton').hidden=true;
+  document.getElementById('reviewAnswer').hidden=false;
+}
+function gradePhrase(rating){
+  const phrase=reviewQueue[reviewIndex],entry=phrasebook[phrase];
+  if(!entry) return;
+  const day=86400000;
+  if(rating==='again'){entry.stage=0;entry.nextReview=Date.now()+day;}
+  if(rating==='hard'){entry.stage=Math.max(0,entry.stage||0);entry.nextReview=Date.now()+Math.max(1,[1,3,7,14,30][entry.stage]||1)*day;}
+  if(rating==='good'){const stage=Math.max(0,entry.stage||0);entry.nextReview=Date.now()+[1,3,7,14,30][stage]*day;entry.stage=Math.min(4,stage+1);}
+  entry.reviews=(entry.reviews||0)+1;
+  savePhrasebook();reviewIndex++;renderReviewPage();
+}
+function removePhrase(phrase){
+  delete phrasebook[phrase];savePhrasebook();
+  reviewQueue=reviewQueue.filter(item=>item!==phrase);
+  reviewIndex=Math.min(reviewIndex,reviewQueue.length);
+  renderReviewPage();
+}
+
+function rotateQuestion(question,amount){
+  const shift=amount%question.opts.length;
+  const indexed=question.opts.map((option,index)=>({option,index}));
+  const rotated=indexed.slice(shift).concat(indexed.slice(0,shift));
+  return {...question,opts:rotated.map(item=>item.option),a:rotated.findIndex(item=>item.index===question.a)};
+}
+function buildLessonQuiz(lesson){
+  const rawTopic=lesson.title.replace(/^(Interview|Immersion): /,'');
+  const topicChoices=[lesson,...[1,11,23].map(offset=>lessons[(lesson.day-1+offset)%lessons.length])].map(item=>({en:item.title.replace(/^(Interview|Immersion): /,''),vi:E90_VI.topicVi(item)}));
+  const frameworks=[...new Set(lessons.map(item=>item.framework.name))];
+  const frameworkChoices=[lesson.framework.name,...frameworks.filter(name=>name!==lesson.framework.name).slice(0,3)].map(name=>({en:name,vi:name}));
+  const otherPhrases=Object.keys(E90_VI.phrases).filter(phrase=>!lesson.phrases.includes(phrase));
+  const phraseDistractors=[];
+  for(let offset=0;phraseDistractors.length<3;offset++){
+    const phrase=otherPhrases[(lesson.day*3+offset*5)%otherPhrases.length];
+    if(!phraseDistractors.includes(phrase)) phraseDistractors.push(phrase);
+  }
+  const phraseChoices=[lesson.phrases[0],...phraseDistractors].map(phrase=>({en:phrase,vi:E90_VI.phrases[phrase]}));
+  const enSteps=lesson.framework.steps.split(' → '),viSteps=E90_VI.frameworkSteps[lesson.framework.steps].split(' → ');
+  const stepPairs=enSteps.map((step,index)=>({en:step,vi:viSteps[index]}));
+  const fallbackSteps=[{en:'Goal',vi:'Mục tiêu'},{en:'Result',vi:'Kết quả'},{en:'Context',vi:'Bối cảnh'},{en:'Example',vi:'Ví dụ'}];
+  const stepChoices=[stepPairs[0],...stepPairs.slice(1),...fallbackSteps.filter(item=>!enSteps.includes(item.en))].slice(0,4);
+  let finishChoices,finishAnswer;
+  if(lesson.day<60){finishAnswer={en:'Finish with a conclusion or next step.',vi:'Kết thúc bằng kết luận hoặc bước tiếp theo.'};}
+  else if(lesson.day<75){finishAnswer={en:'Include one real example.',vi:'Đưa vào một ví dụ thực tế.'};}
+  else{finishAnswer={en:'Agree on a clear next step.',vi:'Thống nhất một bước tiếp theo rõ ràng.'};}
+  finishChoices=[finishAnswer,{en:'Restart after every mistake.',vi:'Bắt đầu lại sau mỗi lỗi.'},{en:'Avoid giving examples.',vi:'Không đưa ra ví dụ.'},{en:'Use as many difficult words as possible.',vi:'Dùng càng nhiều từ khó càng tốt.'}];
+  return [
+    {q:`Which topic are you practicing on Day ${lesson.day}?`,qVi:`Bạn đang luyện chủ đề nào trong Ngày ${lesson.day}?`,opts:topicChoices,a:0},
+    {q:`Which framework is used for “${rawTopic}”?`,qVi:`Khung trả lời nào được dùng cho chủ đề “${E90_VI.topicVi(lesson)}”?`,opts:frameworkChoices,a:0},
+    {q:'Which phrase appears in today’s lesson?',qVi:'Phrase nào xuất hiện trong bài học hôm nay?',opts:phraseChoices,a:0},
+    {q:`What is the first step in the ${lesson.framework.name} framework?`,qVi:`Bước đầu tiên trong khung ${lesson.framework.name} là gì?`,opts:stepChoices,a:0},
+    {q:'What should you include at the end of today’s speaking practice?',qVi:'Bạn nên làm gì ở cuối phần luyện nói hôm nay?',opts:finishChoices,a:0}
+  ].map((question,index)=>rotateQuestion(question,lesson.day+index));
+}
+
+function startShadowingPractice(){
+  stopShadowingPractice();
+  const run=shadowingRun,pairs=E90_VI.shadowing(lessons[current-1]);
+  const playNext=index=>{
+    if(run!==shadowingRun) return;
+    document.querySelectorAll('#shadow .translation-item').forEach((item,itemIndex)=>item.classList.toggle('practicing',itemIndex===index));
+    if(index>=pairs.length){
+      document.getElementById('shadowStatus').textContent='Hoàn thành lượt Shadowing!';
+      return;
+    }
+    document.getElementById('shadowStatus').textContent=`Câu ${index+1}/${pairs.length} • Đang nghe…`;
+    speak(pairs[index].en,.82,()=>{
+      if(run!==shadowingRun) return;
+      document.getElementById('shadowStatus').textContent=`Câu ${index+1}/${pairs.length} • Hãy nói lại trong ${settings.shadowPause} giây`;
+      shadowingTimer=setTimeout(()=>playNext(index+1),settings.shadowPause*1000);
+    });
+  };
+  playNext(0);
+}
+function stopShadowingPractice(){
+  shadowingRun++;
+  clearTimeout(shadowingTimer);shadowingTimer=null;
+  stopSpeak();
+  document.querySelectorAll('#shadow .translation-item').forEach(item=>item.classList.remove('practicing'));
+  const status=document.getElementById('shadowStatus');if(status) status.textContent='';
+}
+function playShadowSentence(index){stopShadowingPractice();speak(E90_VI.shadowing(lessons[current-1])[index].en,.82);}
+
+function openRecordingDb(){
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open('english90-recordings',1);
+    request.onupgradeneeded=()=>request.result.createObjectStore('recordings');
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  });
+}
+async function saveRecording(day,blob){const db=await openRecordingDb();await new Promise((resolve,reject)=>{const tx=db.transaction('recordings','readwrite');tx.objectStore('recordings').put(blob,day);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();}
+async function getRecording(day){const db=await openRecordingDb();const blob=await new Promise((resolve,reject)=>{const request=db.transaction('recordings').objectStore('recordings').get(day);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});db.close();return blob;}
+async function removeRecording(day){const db=await openRecordingDb();await new Promise((resolve,reject)=>{const tx=db.transaction('recordings','readwrite');tx.objectStore('recordings').delete(day);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();}
+function formatDuration(seconds){return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;}
+async function loadRecording(day){
+  const audio=document.getElementById('recordingPlayback'),status=document.getElementById('recordingStatus');
+  if(!audio||!status) return;
+  if(recordingAudioUrl){URL.revokeObjectURL(recordingAudioUrl);recordingAudioUrl='';}
+  try{
+    const blob=await getRecording(day);
+    if(day!==current) return;
+    if(blob){recordingAudioUrl=URL.createObjectURL(blob);audio.src=recordingAudioUrl;audio.hidden=false;document.getElementById('deleteRecordingButton').hidden=false;status.textContent='Bản ghi đã được lưu trên thiết bị.';}
+    else{audio.removeAttribute('src');audio.hidden=true;document.getElementById('deleteRecordingButton').hidden=true;status.textContent='Chưa có bản ghi cho ngày này.';}
+  }catch(error){status.textContent='Không thể đọc bản ghi trên trình duyệt này.';}
+}
+async function startRecording(){
+  const status=document.getElementById('recordingStatus');
+  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){status.textContent='Trình duyệt này không hỗ trợ ghi âm.';return;}
+  try{
+    recordingStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const recordingDay=current;
+    recordingChunks=[];mediaRecorder=new MediaRecorder(recordingStream);
+    mediaRecorder.ondataavailable=event=>{if(event.data.size) recordingChunks.push(event.data);};
+    mediaRecorder.onstop=async()=>{
+      clearInterval(recordingTimer);recordingTimer=null;
+      recordingStream?.getTracks().forEach(track=>track.stop());recordingStream=null;
+      if(recordingChunks.length){await saveRecording(recordingDay,new Blob(recordingChunks,{type:mediaRecorder.mimeType||'audio/webm'}));}
+      mediaRecorder=null;
+      if(recordingDay===current){document.getElementById('startRecordingButton').hidden=false;document.getElementById('stopRecordingButton').hidden=true;loadRecording(recordingDay);}
+    };
+    mediaRecorder.start();recordingStartedAt=Date.now();
+    document.getElementById('startRecordingButton').hidden=true;document.getElementById('stopRecordingButton').hidden=false;
+    recordingTimer=setInterval(()=>{status.textContent=`Đang ghi âm • ${formatDuration(Math.floor((Date.now()-recordingStartedAt)/1000))}`;},250);
+    status.textContent='Đang ghi âm • 00:00';
+  }catch(error){status.textContent='Không thể truy cập micro. Hãy kiểm tra quyền của trình duyệt.';}
+}
+function stopRecording(){if(mediaRecorder?.state==='recording') mediaRecorder.stop();}
+async function deleteCurrentRecording(){if(!confirm('Xóa bản ghi của ngày này?')) return;await removeRecording(current);loadRecording(current);}
 function saveSettings(){localStorage.setItem('e90-settings',JSON.stringify(settings));}
 function loadVoiceOptions(){
   const select=document.getElementById('voiceSelect');
   if(!select) return;
   const voices=speechSynthesis.getVoices().filter(voice=>voice.lang.toLowerCase().startsWith('en'));
   select.innerHTML='<option value="">Giọng mặc định của thiết bị</option>'+voices.map(voice=>`<option value="${escapeHtml(voice.voiceURI)}">${escapeHtml(voice.name)} — ${escapeHtml(voice.lang)}${voice.localService?' (offline)':''}</option>`).join('');
-  if(voices.some(voice=>voice.voiceURI===settings.voiceURI)) select.value=settings.voiceURI;
-  else{settings.voiceURI='';select.value='';saveSettings();}
+  if(!settings.voiceURI||voices.some(voice=>voice.voiceURI===settings.voiceURI)) select.value=settings.voiceURI;
+  else if(voices.length){settings.voiceURI='';select.value='';saveSettings();}
   document.getElementById('voiceStatus').textContent=voices.length?`${voices.length} giọng tiếng Anh có sẵn trên thiết bị`:'Đang tải danh sách giọng nói của thiết bị…';
 }
 function syncSettingsControls(){
@@ -65,12 +269,15 @@ function syncSettingsControls(){
   document.getElementById('rateValue').textContent=`${Number(settings.rateMultiplier).toFixed(2)}×`;
   document.getElementById('pitchSetting').value=settings.pitch;
   document.getElementById('pitchValue').textContent=Number(settings.pitch).toFixed(2);
+  document.getElementById('shadowPauseSetting').value=settings.shadowPause;
+  document.getElementById('shadowPauseValue').textContent=`${settings.shadowPause} giây`;
   document.getElementById('showTranslationsSetting').checked=!!settings.showTranslations;
   loadVoiceOptions();
 }
 function openSettings(){
-  stopSpeak();saveNote();
+  stopShadowingPractice();stopRecording();saveNote();
   document.getElementById('lessonView').hidden=true;
+  document.getElementById('reviewPage').hidden=true;
   document.getElementById('settingsPage').hidden=false;
   syncSettingsControls();
   window.scrollTo({top:0,behavior:'smooth'});
@@ -85,6 +292,7 @@ function closeSettings(){
 function setVoice(value){settings.voiceURI=value;saveSettings();}
 function setRate(value){settings.rateMultiplier=Number(value);document.getElementById('rateValue').textContent=`${settings.rateMultiplier.toFixed(2)}×`;saveSettings();}
 function setPitch(value){settings.pitch=Number(value);document.getElementById('pitchValue').textContent=settings.pitch.toFixed(2);saveSettings();}
+function setShadowPause(value){settings.shadowPause=Number(value);document.getElementById('shadowPauseValue').textContent=`${settings.shadowPause} giây`;saveSettings();}
 function setShowTranslations(checked){settings.showTranslations=checked;saveSettings();}
 function previewVoice(){speak('Hello! This is your English 90 practice voice.',1);}
 function resetSettings(){settings={...defaultSettings};saveSettings();syncSettingsControls();stopSpeak();}
@@ -104,16 +312,17 @@ function render(){
   document.getElementById('phrases').innerHTML=L.phrases.map(p=>translationItem(
     {en:p,vi:E90_VI.phrases[p]},
     'phrase',
-    `<button type="button" class="audio-btn" aria-label="Phát câu tiếng Anh" onclick='speak(${JSON.stringify(p)})'>▶</button>`
+    `${phraseStarButton(p)}<button type="button" class="audio-btn" aria-label="Phát câu tiếng Anh" onclick='speak(${JSON.stringify(p)})'>▶</button>`
   )).join('');
   document.getElementById('listeningText').innerHTML=translationList(E90_VI.listening(L));
-  document.getElementById('shadow').innerHTML=translationList(E90_VI.shadowing(L));
+  document.getElementById('shadow').innerHTML=E90_VI.shadowing(L).map((item,index)=>translationItem(item,'',`<button type="button" class="audio-btn" aria-label="Nghe riêng câu này" title="Nghe riêng câu này" onclick="playShadowSentence(${index})">▶</button>`)).join('');
   document.getElementById('speaking').innerHTML=translationList(E90_VI.speaking(L));
   document.getElementById('challenge').innerHTML=translationList(E90_VI.challenge(L));
   document.getElementById('notes').value=notes[L.day]||'';
   document.getElementById('done').checked=!!progress[L.day];
-  document.getElementById('quiz').innerHTML=L.quiz.map((q,qi)=>`<div class="quizq">${translationItem({en:`${qi+1}. ${q.q}`,vi:`${qi+1}. ${E90_VI.quiz[q.q]}`} ,'quiz-question')}${q.opts.map((o,oi)=>`<div class="translation-item quiz-option"><div class="english-row"><label class="opt"><input type="radio" name="q${qi}" value="${oi}"> <span>${escapeHtml(o)}</span></label>${translateButton()}</div><div class="vi-translation"${settings.showTranslations?'':' hidden'} lang="vi">${escapeHtml(E90_VI.quiz[o])}</div></div>`).join('')}</div>`).join('')+`<button class="primary" onclick="gradeQuiz()">Kiểm tra đáp án</button> <span id="score"></span>`;
-  renderVideo(); renderSidebar();
+  currentQuiz=buildLessonQuiz(L);
+  document.getElementById('quiz').innerHTML=currentQuiz.map((q,qi)=>`<div class="quizq">${translationItem({en:`${qi+1}. ${q.q}`,vi:`${qi+1}. ${q.qVi}`} ,'quiz-question')}${q.opts.map((o,oi)=>`<div class="translation-item quiz-option"><div class="english-row"><label class="opt"><input type="radio" name="q${qi}" value="${oi}"> <span>${escapeHtml(o.en)}</span></label>${translateButton()}</div><div class="vi-translation"${settings.showTranslations?'':' hidden'} lang="vi">${escapeHtml(o.vi)}</div></div>`).join('')}</div>`).join('')+`<button class="primary" onclick="gradeQuiz()">Kiểm tra đáp án</button> <span id="score"></span>`;
+  renderVideo();renderSidebar();updateReviewBadge();loadRecording(L.day);
 }
 function renderVideo(){
   const L=lessons[current-1], slides=slideTemplates(L), s=slides[slideIndex];
@@ -124,13 +333,13 @@ function renderVideo(){
 function nextSlide(){const n=slideTemplates(lessons[current-1]).length;slideIndex=(slideIndex+1)%n;renderVideo();}
 function prevSlide(){const n=slideTemplates(lessons[current-1]).length;slideIndex=(slideIndex-1+n)%n;renderVideo();}
 function narrateSlide(){const L=lessons[current-1],s=slideTemplates(L)[slideIndex];speak(`${s.title.en}. ${s.body.map(item=>item.en).join(' ')}`,0.88);}
-function selectDay(d){current=d;localStorage.setItem('e90-current',d);render();window.scrollTo({top:0,behavior:'smooth'});}
+function selectDay(d){stopShadowingPractice();stopRecording();current=d;localStorage.setItem('e90-current',d);render();window.scrollTo({top:0,behavior:'smooth'});}
 function saveNote(){notes[current]=document.getElementById('notes').value;localStorage.setItem('e90-notes',JSON.stringify(notes));}
 function toggleDone(){progress[current]=document.getElementById('done').checked;localStorage.setItem('e90-progress',JSON.stringify(progress));renderSidebar();}
 function gradeQuiz(){
-  const L=lessons[current-1];let score=0;
-  L.quiz.forEach((q,qi)=>{const x=document.querySelector(`input[name=q${qi}]:checked`);if(x&&Number(x.value)===q.a)score++;});
-  document.getElementById('score').textContent=` Điểm: ${score}/${L.quiz.length}`;
+  let score=0;
+  currentQuiz.forEach((q,qi)=>{const x=document.querySelector(`input[name=q${qi}]:checked`);if(x&&Number(x.value)===q.a)score++;});
+  document.getElementById('score').textContent=` Điểm: ${score}/${currentQuiz.length}`;
 }
 function revealListening(){const el=document.getElementById('listenWrap');el.hidden=!el.hidden;}
 function startListening(){speak(lessons[current-1].listening,0.88);}

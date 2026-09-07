@@ -7,7 +7,7 @@
 <link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header><div class="top"><div><div class="brand">English <span>90</span></div><div class="small">Offline Fluency Program</div></div><div class="top-actions"><div class="small">A2 → Work-ready communication</div><button class="settings-button" onclick="openSettings()">⚙️ <span>Cài đặt</span></button></div></div></header>
+<header><div class="top"><div><div class="brand">English <span>90</span></div><div class="small">Offline Fluency Program</div></div><div class="top-actions"><div class="small">A2 → Work-ready communication</div><button class="review-button" onclick="openReview()">⭐ <span>Ôn tập</span><i id="reviewBadge" hidden></i></button><button class="settings-button" onclick="openSettings()">⚙️ <span>Cài đặt</span></button></div></div></header>
 <section class="settings-page" id="settingsPage" hidden>
   <div class="settings-heading">
     <div><div class="tagline">ENGLISH 90</div><h1>⚙️ Cài đặt</h1><p>Tùy chỉnh trải nghiệm nghe và học trên thiết bị này.</p></div>
@@ -37,11 +37,26 @@
       </div>
     </section>
     <section class="card settings-card wide">
+      <div class="setting-icon">⏸️</div>
+      <div class="setting-content"><h2>Khoảng nghỉ Shadowing</h2><p class="small">Thời gian để bạn nói lại sau khi nghe từng câu.</p>
+        <div class="range-label"><label for="shadowPauseSetting">Khoảng nghỉ</label><output id="shadowPauseValue">4 giây</output></div>
+        <input id="shadowPauseSetting" type="range" min="2" max="8" step="1" value="4" oninput="setShadowPause(this.value)">
+      </div>
+    </section>
+    <section class="card settings-card wide">
       <div class="setting-icon">🌐</div>
       <div class="setting-content"><div class="toggle-setting"><div><h2>Tự động hiện bản dịch</h2><p class="small">Hiện sẵn tiếng Việt dưới mỗi câu khi mở một bài học.</p></div><label class="switch"><input id="showTranslationsSetting" type="checkbox" onchange="setShowTranslations(this.checked)"><span></span></label></div></div>
     </section>
   </div>
   <div class="settings-actions"><button class="secondary" onclick="resetSettings()">Khôi phục mặc định</button><button class="primary" onclick="closeSettings()">Xong</button></div>
+</section>
+<section class="review-page" id="reviewPage" hidden>
+  <div class="settings-heading">
+    <div><div class="tagline">SPACED REVIEW</div><h1>⭐ Ôn tập phrase</h1><p id="reviewSummary"></p></div>
+    <button class="secondary" onclick="closeReview()">← Quay lại bài học</button>
+  </div>
+  <section class="card review-practice" id="reviewPractice"></section>
+  <section class="card phrase-library-card"><div class="library-heading"><h2>Sổ phrase của bạn</h2><button class="secondary" onclick="openReview(true)">Ôn tất cả</button></div><div id="phraseLibrary"></div></section>
 </section>
 <div class="wrap" id="lessonView">
 <aside class="sidebar">
@@ -66,15 +81,16 @@
   <div id="listenWrap" hidden><div id="listeningText"></div></div>
 </section>
 <section class="card"><h2>🎙️ Shadowing</h2><div id="shadow"></div>
-  <button class="primary" onclick="startShadowing()">▶ Play slowly</button>
-  <button class="secondary" onclick="speak(lessons[current-1].shadowing,1)">▶ Normal speed</button>
+  <div class="practice-controls"><button class="primary" onclick="startShadowingPractice()">▶ Luyện từng câu</button><button class="secondary" onclick="stopShadowingPractice()">■ Dừng</button></div>
+  <div class="practice-status small" id="shadowStatus"></div>
 </section>
 <section class="card wide"><h2>💬 Speaking Practice</h2><div class="bigtext" id="speaking"></div>
   <div class="note"><b>Quy tắc:</b> Bắt đầu trong vòng 5 giây. Không nói lại từ đầu. Nếu quên một từ, hãy diễn đạt theo cách khác.</div>
+  <div class="recording-panel"><div><h3>🎤 Ghi âm câu trả lời</h3><p class="small" id="recordingStatus">Chưa có bản ghi cho ngày này.</p></div><div class="recording-controls"><button class="primary" id="startRecordingButton" onclick="startRecording()">● Bắt đầu ghi</button><button class="danger" id="stopRecordingButton" onclick="stopRecording()" hidden>■ Dừng và lưu</button><button class="secondary" id="deleteRecordingButton" onclick="deleteCurrentRecording()" hidden>Xóa bản ghi</button></div><audio id="recordingPlayback" controls hidden></audio></div>
 </section>
 <section class="card"><h2>🔥 Mini Challenge</h2><div id="challenge"></div></section>
 <section class="card"><h2>📝 My Notes</h2><textarea id="notes" placeholder="Write new phrases, mistakes, or your own answer..." oninput="saveNote()"></textarea></section>
-<section class="card wide"><h2>✅ Daily Quiz</h2><div id="quiz"></div></section>
+<section class="card wide"><h2>✅ Quiz theo bài học</h2><div id="quiz"></div></section>
 <section class="card wide"><div class="checkrow"><input id="done" type="checkbox" onchange="toggleDone()"><label for="done"><b>Mark this day complete</b></label></div></section>
 </div>
 <div class="footer">English 90 stores progress locally on this device. <button class="secondary" onclick="resetProgress()">Reset progress</button></div>
