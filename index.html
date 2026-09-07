@@ -7,19 +7,54 @@
 <link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header><div class="top"><div><div class="brand">English <span>90</span></div><div class="small">Offline Fluency Program</div></div><div class="small">A2 → Work-ready communication</div></div></header>
-<div class="wrap">
+<header><div class="top"><div><div class="brand">English <span>90</span></div><div class="small">Offline Fluency Program</div></div><div class="top-actions"><div class="small">A2 → Work-ready communication</div><button class="settings-button" onclick="openSettings()">⚙️ <span>Cài đặt</span></button></div></div></header>
+<section class="settings-page" id="settingsPage" hidden>
+  <div class="settings-heading">
+    <div><div class="tagline">ENGLISH 90</div><h1>⚙️ Cài đặt</h1><p>Tùy chỉnh trải nghiệm nghe và học trên thiết bị này.</p></div>
+    <button class="secondary" onclick="closeSettings()">← Quay lại bài học</button>
+  </div>
+  <div class="settings-grid">
+    <section class="card settings-card wide">
+      <div class="setting-icon">🔊</div>
+      <div class="setting-content"><h2>Giọng đọc tiếng Anh</h2><p class="small">Danh sách này sử dụng các giọng có sẵn trên trình duyệt hoặc hệ điều hành.</p>
+        <label class="field-label" for="voiceSelect">Giọng nói</label>
+        <select id="voiceSelect" onchange="setVoice(this.value)"><option value="">Giọng mặc định của thiết bị</option></select>
+        <div class="setting-footer"><span class="small" id="voiceStatus">Đang tải danh sách giọng nói của thiết bị…</span><button class="primary" onclick="previewVoice()">▶ Nghe thử</button></div>
+      </div>
+    </section>
+    <section class="card settings-card">
+      <div class="setting-icon">⏱️</div>
+      <div class="setting-content"><h2>Tốc độ đọc</h2><p class="small">Áp dụng tương đối cho Listening, Shadowing và phần nghe thử.</p>
+        <div class="range-label"><label for="rateSetting">Tốc độ</label><output id="rateValue">1.00×</output></div>
+        <input id="rateSetting" type="range" min="0.7" max="1.4" step="0.05" value="1" oninput="setRate(this.value)">
+      </div>
+    </section>
+    <section class="card settings-card">
+      <div class="setting-icon">🎚️</div>
+      <div class="setting-content"><h2>Cao độ giọng đọc</h2><p class="small">Điều chỉnh giọng trầm hoặc cao hơn mà không đổi nội dung.</p>
+        <div class="range-label"><label for="pitchSetting">Cao độ</label><output id="pitchValue">1.00</output></div>
+        <input id="pitchSetting" type="range" min="0.7" max="1.3" step="0.05" value="1" oninput="setPitch(this.value)">
+      </div>
+    </section>
+    <section class="card settings-card wide">
+      <div class="setting-icon">🌐</div>
+      <div class="setting-content"><div class="toggle-setting"><div><h2>Tự động hiện bản dịch</h2><p class="small">Hiện sẵn tiếng Việt dưới mỗi câu khi mở một bài học.</p></div><label class="switch"><input id="showTranslationsSetting" type="checkbox" onchange="setShowTranslations(this.checked)"><span></span></label></div></div>
+    </section>
+  </div>
+  <div class="settings-actions"><button class="secondary" onclick="resetSettings()">Khôi phục mặc định</button><button class="primary" onclick="closeSettings()">Xong</button></div>
+</section>
+<div class="wrap" id="lessonView">
 <aside class="sidebar">
-  <div class="progressbox"><b>Your progress</b><div class="small" id="pct"></div><div class="bar"><i id="bar"></i></div></div>
+  <div class="progressbox"><b>Tiến độ của bạn</b><div class="small" id="pct"></div><div class="bar"><i id="bar"></i></div></div>
   <div id="days"></div>
 </aside>
 <main>
-<section class="hero"><div class="tag" id="phase"></div><h1 id="title"></h1><div id="objective"></div></section>
+<section class="hero"><div class="tag" id="phase"></div><div class="hero-title" id="title"></div><div id="objective"></div></section>
 <div class="grid">
 <section class="card wide">
   <h2>🎬 Offline Video Lesson</h2>
-  <div class="video"><div><div class="small" id="vcount"></div><h3 id="vtitle"></h3><p id="vbody"></p></div>
-  <div class="controls"><button onclick="prevSlide()">← Prev</button><button onclick="narrateSlide()">▶ Narrate</button><button onclick="stopSpeak()">■ Stop</button><button onclick="nextSlide()">Next →</button></div></div>
+  <div class="video"><div><div class="small" id="vcount"></div><div id="vtitle"></div><div id="vbody"></div></div>
+  <div class="controls"><button onclick="prevSlide()">← Trước</button><button onclick="narrateSlide()">▶ Nghe</button><button onclick="stopSpeak()">■ Dừng</button><button onclick="nextSlide()">Tiếp →</button></div></div>
   <p class="small">Video lesson chạy bằng slide + giọng đọc có sẵn của thiết bị, nên dùng được offline và không cần YouTube.</p>
 </section>
 <section class="card"><h2>🧠 Framework</h2><div class="bigtext" id="framework"></div></section>
@@ -28,16 +63,16 @@
   <p>Nghe 1 lần không nhìn transcript. Sau đó tóm tắt bằng English.</p>
   <button class="primary" onclick="startListening()">▶ Play listening</button>
   <button class="secondary" onclick="revealListening()">Show / Hide transcript</button>
-  <div id="listenWrap" hidden><p id="listeningText"></p></div>
+  <div id="listenWrap" hidden><div id="listeningText"></div></div>
 </section>
-<section class="card"><h2>🎙️ Shadowing</h2><p id="shadow"></p>
+<section class="card"><h2>🎙️ Shadowing</h2><div id="shadow"></div>
   <button class="primary" onclick="startShadowing()">▶ Play slowly</button>
   <button class="secondary" onclick="speak(lessons[current-1].shadowing,1)">▶ Normal speed</button>
 </section>
-<section class="card wide"><h2>💬 Speaking Practice</h2><p class="bigtext" id="speaking"></p>
-  <div class="note"><b>Rule:</b> 5 seconds to start. No restart. If you forget a word, explain it another way.</div>
+<section class="card wide"><h2>💬 Speaking Practice</h2><div class="bigtext" id="speaking"></div>
+  <div class="note"><b>Quy tắc:</b> Bắt đầu trong vòng 5 giây. Không nói lại từ đầu. Nếu quên một từ, hãy diễn đạt theo cách khác.</div>
 </section>
-<section class="card"><h2>🔥 Mini Challenge</h2><p id="challenge"></p></section>
+<section class="card"><h2>🔥 Mini Challenge</h2><div id="challenge"></div></section>
 <section class="card"><h2>📝 My Notes</h2><textarea id="notes" placeholder="Write new phrases, mistakes, or your own answer..." oninput="saveNote()"></textarea></section>
 <section class="card wide"><h2>✅ Daily Quiz</h2><div id="quiz"></div></section>
 <section class="card wide"><div class="checkrow"><input id="done" type="checkbox" onchange="toggleDone()"><label for="done"><b>Mark this day complete</b></label></div></section>
@@ -45,6 +80,37 @@
 <div class="footer">English 90 stores progress locally on this device. <button class="secondary" onclick="resetProgress()">Reset progress</button></div>
 </main>
 </div>
-<script src="app.js"></script>
-<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});</script>
+<script src="translations.js"></script><script src="app.js"></script>
+<script>
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').then(registration=>registration.update()).catch(()=>{});
+}
+
+if(['localhost','127.0.0.1'].includes(location.hostname)){
+  const watchedFiles=['./index.html','./styles.css','./translations.js','./app.js','./sw.js'];
+  let currentFingerprint='';
+  let checkingForUpdates=false;
+
+  async function getFingerprint(){
+    const contents=await Promise.all(watchedFiles.map(file=>fetch(file,{cache:'no-store'}).then(response=>response.text())));
+    const bytes=new TextEncoder().encode(contents.join('\n---english90-file---\n'));
+    const digest=await crypto.subtle.digest('SHA-256',bytes);
+    return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+  }
+
+  getFingerprint().then(fingerprint=>{currentFingerprint=fingerprint;}).catch(()=>{});
+  setInterval(async()=>{
+    if(checkingForUpdates||!currentFingerprint) return;
+    checkingForUpdates=true;
+    try{
+      const nextFingerprint=await getFingerprint();
+      if(nextFingerprint!==currentFingerprint) location.reload();
+    }catch(error){
+      // Không làm gì khi server tạm dừng; ứng dụng vẫn dùng được từ cache offline.
+    }finally{
+      checkingForUpdates=false;
+    }
+  },1500);
+}
+</script>
 </body></html>
