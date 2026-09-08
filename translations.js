@@ -501,13 +501,13 @@ const E90_VI = (() => {
       : isImmersion
         ? `Bạn và một đồng nghiệp đang đóng vai tình huống công việc “${topicVi(lesson)}”.`
         : `Bạn và một đồng nghiệp đang thảo luận về “${topicVi(lesson)}” trong một cuộc họp thực tế.`;
-    const lines = isInterview
-      ? lesson.phrases.flatMap(phrase => [
-          {speaker: roles[0], ...interviewPrompts[phrase]},
-          {speaker: roles[1], ...conversationLines[phrase]}
-        ])
-      : lesson.phrases.map((phrase, index) => ({speaker: roles[index % roles.length], ...conversationLines[phrase]}));
-    return {context: pair(scenarioEn, scenarioVi), lines};
+    const turns = lesson.phrases.map(phrase => ({
+      phrase,
+      prompt: {speaker: roles[0], ...interviewPrompts[phrase]},
+      response: {speaker: roles[1], ...conversationLines[phrase]}
+    }));
+    const lines = turns.flatMap(turn => [turn.prompt, turn.response]);
+    return {context: pair(scenarioEn, scenarioVi), turns, lines};
   }
 
   return {topics, phases, frameworkSteps, phrases, phraseExamples, quiz, topicVi, objective, listening, shadowing, speaking, challenge, title, framework, conversation};

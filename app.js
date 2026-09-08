@@ -52,6 +52,17 @@ let recordingStartedAt=0;
 let recordingAudioUrl='';
 let shadowingRun=0;
 let shadowingTimer=null;
+let conversationRecorder=null;
+let conversationStream=null;
+let conversationChunks=[];
+let conversationRecordingTurn=-1;
+let conversationRecordingStartedAt=0;
+let conversationRecordingTimer=null;
+let conversationCountdownTimer=null;
+let conversationPromptRun=0;
+let conversationRecordingCancelled=false;
+let conversationAttempts=new Set();
+let conversationAudioUrls={};
 const defaultSettings={voiceURI:'',preferGoogleUS:true,rateMultiplier:1,pitch:1,showTranslations:false,shadowPause:4};
 let settings={...defaultSettings,...JSON.parse(localStorage.getItem('e90-settings')||'{}')};
 
@@ -152,7 +163,7 @@ function formatReviewDate(timestamp){
   return `Ôn ${new Date(timestamp).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}`;
 }
 function openReview(reviewAll=false){
-  stopSpeak();saveNote();stopShadowingPractice();
+  stopSpeak();saveNote();stopShadowingPractice();stopConversationPractice();
   document.getElementById('lessonView').hidden=true;
   document.getElementById('settingsPage').hidden=true;
   document.getElementById('reviewPage').hidden=false;
@@ -268,6 +279,127 @@ function stopShadowingPractice(){
 }
 function playShadowSentence(index){stopShadowingPractice();speak(E90_VI.shadowing(lessons[current-1])[index].en,.82);}
 
+function renderConversationTurn(turn,index,total){
+  const partnerInitial=turn.prompt.speaker==='Người phỏng vấn'?'P':'Đ';
+  return `<section class="conversation-turn" id="conversationTurn${index}">
+    <div class="conversation-turn-heading"><b>Lượt ${index+1}/${total}</b><span class="conversation-turn-state" id="conversationTurnState${index}">Chưa luyện</span></div>
+    <div class="conversation-line from-partner"><div class="speaker-avatar" aria-hidden="true">${partnerInitial}</div><div class="conversation-bubble"><div class="speaker-name">${escapeHtml(turn.prompt.speaker)}</div>${translationItem({en:turn.prompt.en,vi:turn.prompt.vi},'conversation-sentence',audioButton(turn.prompt.en,'Nghe câu hỏi'))}</div></div>
+    <div class="conversation-response-zone">
+      <div><b>Đến lượt bạn</b><div class="small">Tự trả lời bằng tiếng Anh trước khi xem gợi ý. Bắt đầu trong vòng 5 giây.</div></div>
+      <div class="conversation-turn-status small" id="conversationTurnStatus${index}" aria-live="polite">Nghe câu hỏi, suy nghĩ nhanh rồi trả lời.</div>
+      <div class="conversation-turn-actions">
+        <button class="primary" type="button" onclick="startConversationPrompt(${index})">▶ Nghe + chuẩn bị</button>
+        <button class="secondary" type="button" id="conversationRecord${index}" onclick="startConversationRecording(${index})">🎤 Ghi câu trả lời</button>
+        <button class="danger" type="button" id="conversationStop${index}" onclick="stopConversationRecording(${index})" hidden>■ Dừng ghi</button>
+        <button class="secondary" type="button" onclick="markConversationAttempt(${index})">Tôi đã trả lời</button>
+      </div>
+      <audio class="conversation-recording" id="conversationPlayback${index}" controls hidden></audio>
+      <button class="conversation-reveal" type="button" id="conversationReveal${index}" onclick="revealConversationTurn(${index})" disabled>🔒 Xem gợi ý &amp; câu mẫu</button>
+      <div class="conversation-answer" id="conversationAnswer${index}" hidden>
+        <div class="conversation-hint"><div class="conversation-answer-label">PHRASE GỢI Ý</div>${translationItem({en:turn.phrase,vi:E90_VI.phrases[turn.phrase]},'conversation-sentence',audioButton(turn.phrase,'Nghe Phrase gợi ý'))}</div>
+        <div class="conversation-line from-you"><div class="speaker-avatar" aria-hidden="true">B</div><div class="conversation-bubble"><div class="speaker-name">Câu trả lời mẫu</div>${translationItem({en:turn.response.en,vi:turn.response.vi},'conversation-sentence',audioButton(turn.response.en,'Nghe câu trả lời mẫu'))}</div></div>
+        <button class="secondary conversation-retry" type="button" onclick="retryConversationTurn(${index})">↻ Thử lại mà không nhìn mẫu</button>
+      </div>
+    </div>
+  </section>`;
+}
+function updateConversationProgress(total=E90_VI.conversation(lessons[current-1]).turns.length){
+  const el=document.getElementById('conversationProgress');
+  if(el) el.textContent=`${conversationAttempts.size}/${total} lượt đã tự trả lời trong phiên này`;
+}
+function setConversationRecordingButtons(index,isRecording){
+  const start=document.getElementById(`conversationRecord${index}`),stop=document.getElementById(`conversationStop${index}`);
+  if(start) start.hidden=isRecording;
+  if(stop) stop.hidden=!isRecording;
+}
+function markConversationAttempt(index,message='Đã tự trả lời • Bây giờ bạn có thể xem câu mẫu.'){
+  conversationAttempts.add(index);
+  const turn=document.getElementById(`conversationTurn${index}`),state=document.getElementById(`conversationTurnState${index}`),status=document.getElementById(`conversationTurnStatus${index}`),reveal=document.getElementById(`conversationReveal${index}`);
+  turn?.classList.add('attempted');
+  if(state) state.textContent='Đã trả lời';
+  if(status) status.textContent=message;
+  if(reveal){reveal.disabled=false;reveal.innerHTML='💡 Xem gợi ý &amp; câu mẫu';}
+  updateConversationProgress();
+}
+function revealConversationTurn(index){
+  if(!conversationAttempts.has(index)) return;
+  const answer=document.getElementById(`conversationAnswer${index}`),reveal=document.getElementById(`conversationReveal${index}`),state=document.getElementById(`conversationTurnState${index}`);
+  if(answer) answer.hidden=false;
+  if(reveal) reveal.hidden=true;
+  if(state) state.textContent='Đã xem mẫu';
+}
+function retryConversationTurn(index){
+  stopSpeak();clearInterval(conversationCountdownTimer);conversationCountdownTimer=null;
+  const answer=document.getElementById(`conversationAnswer${index}`),reveal=document.getElementById(`conversationReveal${index}`),turn=document.getElementById(`conversationTurn${index}`),state=document.getElementById(`conversationTurnState${index}`),status=document.getElementById(`conversationTurnStatus${index}`);
+  if(answer) answer.hidden=true;
+  if(reveal){reveal.hidden=false;reveal.disabled=true;reveal.innerHTML='🔒 Xem gợi ý &amp; câu mẫu';}
+  turn?.classList.remove('attempted');
+  if(state) state.textContent='Thử lại';
+  if(status) status.textContent='Câu mẫu đã được ẩn. Hãy trả lời lại mà không nhìn mẫu.';
+  conversationAttempts.delete(index);updateConversationProgress();
+  document.getElementById(`conversationTurn${index}`)?.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function startConversationPrompt(index){
+  const conversation=E90_VI.conversation(lessons[current-1]),turn=conversation.turns[index],day=current,run=++conversationPromptRun;
+  clearInterval(conversationCountdownTimer);conversationCountdownTimer=null;
+  const status=document.getElementById(`conversationTurnStatus${index}`);
+  if(status) status.textContent='Đang nghe câu hỏi…';
+  speak(turn.prompt.en,.9,()=>{
+    if(run!==conversationPromptRun||day!==current) return;
+    let remaining=5;
+    if(status) status.textContent=`Chuẩn bị nhanh: ${remaining} giây`;
+    conversationCountdownTimer=setInterval(()=>{
+      remaining--;
+      if(remaining>0){if(status) status.textContent=`Chuẩn bị nhanh: ${remaining} giây`;return;}
+      clearInterval(conversationCountdownTimer);conversationCountdownTimer=null;
+      if(status) status.textContent='Đến lượt bạn — hãy trả lời ngay!';
+    },1000);
+  });
+}
+async function startConversationRecording(index){
+  const status=document.getElementById(`conversationTurnStatus${index}`);
+  if(mediaRecorder?.state==='recording'){if(status) status.textContent='Hãy dừng bản ghi Speaking Practice trước.';return;}
+  if(conversationRecorder?.state==='recording'){if(status) status.textContent='Một lượt khác đang được ghi âm.';return;}
+  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){if(status) status.textContent='Trình duyệt này không hỗ trợ ghi âm. Bạn vẫn có thể chọn “Tôi đã trả lời”.';return;}
+  try{
+    stopSpeak();clearInterval(conversationCountdownTimer);conversationCountdownTimer=null;
+    conversationStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const recordingDay=current,recorder=new MediaRecorder(conversationStream);
+    conversationChunks=[];conversationRecorder=recorder;conversationRecordingTurn=index;conversationRecordingCancelled=false;
+    recorder.ondataavailable=event=>{if(event.data.size) conversationChunks.push(event.data);};
+    recorder.onstop=()=>{
+      clearInterval(conversationRecordingTimer);conversationRecordingTimer=null;
+      conversationStream?.getTracks().forEach(track=>track.stop());conversationStream=null;
+      setConversationRecordingButtons(index,false);
+      if(!conversationRecordingCancelled&&recordingDay===current&&conversationChunks.length){
+        if(conversationAudioUrls[index]) URL.revokeObjectURL(conversationAudioUrls[index]);
+        const blob=new Blob(conversationChunks,{type:recorder.mimeType||'audio/webm'}),audio=document.getElementById(`conversationPlayback${index}`);
+        conversationAudioUrls[index]=URL.createObjectURL(blob);
+        if(audio){audio.src=conversationAudioUrls[index];audio.hidden=false;}
+        markConversationAttempt(index,'Đã ghi câu trả lời • Hãy nghe lại trước khi xem câu mẫu.');
+      }
+      if(conversationRecorder===recorder) conversationRecorder=null;
+      conversationRecordingTurn=-1;conversationChunks=[];
+    };
+    recorder.start();conversationRecordingStartedAt=Date.now();setConversationRecordingButtons(index,true);
+    if(status) status.textContent='Đang ghi âm • 00:00';
+    conversationRecordingTimer=setInterval(()=>{if(status) status.textContent=`Đang ghi âm • ${formatDuration(Math.floor((Date.now()-conversationRecordingStartedAt)/1000))}`;},250);
+  }catch(error){
+    conversationStream?.getTracks().forEach(track=>track.stop());conversationStream=null;conversationRecorder=null;conversationRecordingTurn=-1;
+    setConversationRecordingButtons(index,false);
+    if(status) status.textContent='Không thể truy cập micro. Hãy kiểm tra quyền hoặc chọn “Tôi đã trả lời”.';
+  }
+}
+function stopConversationRecording(index){if(conversationRecorder?.state==='recording'&&conversationRecordingTurn===index) conversationRecorder.stop();}
+function stopConversationPractice(){
+  conversationPromptRun++;clearInterval(conversationCountdownTimer);conversationCountdownTimer=null;
+  clearInterval(conversationRecordingTimer);conversationRecordingTimer=null;
+  if(conversationRecorder?.state==='recording'){conversationRecordingCancelled=true;conversationRecorder.stop();}
+  conversationStream?.getTracks().forEach(track=>track.stop());conversationStream=null;
+  Object.values(conversationAudioUrls).forEach(url=>URL.revokeObjectURL(url));conversationAudioUrls={};
+  conversationAttempts=new Set();
+}
+
 function openRecordingDb(){
   return new Promise((resolve,reject)=>{
     const request=indexedDB.open('english90-recordings',1);
@@ -293,6 +425,7 @@ async function loadRecording(day){
 }
 async function startRecording(){
   const status=document.getElementById('recordingStatus');
+  if(conversationRecorder?.state==='recording'){status.textContent='Hãy dừng bản ghi trong phần Giao tiếp thực tế trước.';return;}
   if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){status.textContent='Trình duyệt này không hỗ trợ ghi âm.';return;}
   try{
     recordingStream=await navigator.mediaDevices.getUserMedia({audio:true});
@@ -338,7 +471,7 @@ function syncSettingsControls(){
   loadVoiceOptions();
 }
 function openSettings(){
-  stopShadowingPractice();stopRecording();saveNote();
+  stopShadowingPractice();stopConversationPractice();stopRecording();saveNote();
   document.getElementById('lessonView').hidden=true;
   document.getElementById('reviewPage').hidden=true;
   document.getElementById('settingsPage').hidden=false;
@@ -367,6 +500,7 @@ function renderSidebar(){
   document.getElementById('bar').style.width=`${done/90*100}%`;
 }
 function render(){
+  stopConversationPractice();
   const L=lessons[current-1]; slideIndex=0;
   document.getElementById('phase').innerHTML=translationItem({en:L.phase,vi:E90_VI.phases[L.phase]},'hero-translation');
   document.getElementById('title').innerHTML=translationItem(E90_VI.title(L),'hero-translation');
@@ -375,7 +509,8 @@ function render(){
   document.getElementById('phrases').innerHTML=L.phrases.map(phraseBlock).join('');
   const conversation=E90_VI.conversation(L);
   document.getElementById('conversationContext').innerHTML=translationItem(conversation.context,'conversation-context');
-  document.getElementById('conversation').innerHTML=conversation.lines.map(line=>`<div class="conversation-line ${line.speaker==='Bạn'?'from-you':'from-partner'}"><div class="speaker-avatar" aria-hidden="true">${line.speaker==='Bạn'?'B':line.speaker==='Người phỏng vấn'?'P':'Đ'}</div><div class="conversation-bubble"><div class="speaker-name">${escapeHtml(line.speaker)}</div>${translationItem({en:line.en,vi:line.vi},'conversation-sentence',audioButton(line.en,'Nghe câu giao tiếp'))}</div></div>`).join('');
+  document.getElementById('conversation').innerHTML=conversation.turns.map((turn,index)=>renderConversationTurn(turn,index,conversation.turns.length)).join('');
+  updateConversationProgress(conversation.turns.length);
   document.getElementById('listeningText').innerHTML=translationList(E90_VI.listening(L));
   document.getElementById('shadow').innerHTML=E90_VI.shadowing(L).map((item,index)=>translationItem(item,'',`<button type="button" class="audio-btn" aria-label="Nghe riêng câu này" title="Nghe riêng câu này" onclick="playShadowSentence(${index})">▶</button>`)).join('');
   document.getElementById('speaking').innerHTML=translationList(E90_VI.speaking(L));

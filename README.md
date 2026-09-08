@@ -15,7 +15,7 @@
 - Ghi âm phần luyện nói theo từng ngày, nghe lại và lưu trực tiếp trên thiết bị bằng IndexedDB.
 - Mỗi ngày có 8 useful phrases được chọn riêng theo đúng chủ đề; có thể đánh dấu bằng biểu tượng sao để ôn cách quãng theo lịch 1, 3, 7, 14 và 30 ngày.
 - Mỗi useful phrase có ít nhất 3 ví dụ công việc thực tế, kèm nút nghe và bản dịch tiếng Việt có sẵn.
-- Mỗi ngày có một đoạn giao tiếp thực tế sử dụng đủ 8 useful phrases của bài, phân vai rõ ràng và có nút nghe/dịch riêng từng lượt nói.
+- Mỗi ngày có 8 lượt giao tiếp response-first: nghe câu hỏi, tự trả lời hoặc ghi âm trước, rồi mới mở Phrase gợi ý và câu mẫu; có nút thử lại từng lượt.
 - Mỗi ngày có một quiz riêng dựa trên chủ đề, framework và phrase của bài học đó.
 - Không cần YouTube, API hay tài khoản bên ngoài.
 

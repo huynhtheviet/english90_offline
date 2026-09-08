@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#2f6fed">
 <title>English 90 — Offline Fluency Program</title>
-<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css?v=6">
+<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 <header><div class="top"><div><div class="brand">English <span>90</span></div><div class="small">Offline Fluency Program</div></div><div class="top-actions"><div class="small">A2 → Work-ready communication</div><button class="review-button" onclick="openReview()">⭐ <span>Ôn tập</span><i id="reviewBadge" hidden></i></button><button class="settings-button" onclick="openSettings()">⚙️ <span>Cài đặt</span></button></div></div></header>
@@ -74,7 +74,7 @@
 </section>
 <section class="card"><h2>🧠 Framework</h2><div class="bigtext" id="framework"></div></section>
 <section class="card"><h2>🗣️ Useful Phrases</h2><div id="phrases"></div></section>
-<section class="card wide conversation-card"><h2>🤝 Giao tiếp thực tế</h2><div id="conversationContext"></div><div id="conversation"></div></section>
+<section class="card wide conversation-card"><div class="conversation-section-heading"><div><h2>🤝 Giao tiếp thực tế</h2><p class="small">Nghe câu hỏi, tự trả lời trước, sau đó mới xem Phrase gợi ý và câu mẫu.</p></div><div class="conversation-progress" id="conversationProgress"></div></div><div id="conversationContext"></div><div id="conversation"></div></section>
 <section class="card"><h2>🎧 Listening</h2>
   <p>Nghe 1 lần không nhìn transcript. Sau đó tóm tắt bằng English.</p>
   <button class="primary" onclick="startListening()">▶ Play listening</button>
@@ -97,10 +97,10 @@
 <div class="footer">English 90 stores progress locally on this device. <button class="secondary" onclick="resetProgress()">Reset progress</button></div>
 </main>
 </div>
-<script src="translations.js?v=6"></script><script src="app.js?v=6"></script>
+<script src="translations.js?v=7"></script><script src="app.js?v=7"></script>
 <script>
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=6').then(registration=>registration.update()).catch(()=>{});
+  navigator.serviceWorker.register('./sw.js?v=7').then(registration=>registration.update()).catch(()=>{});
 }
 
 if(['localhost','127.0.0.1'].includes(location.hostname)){
