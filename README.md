@@ -13,9 +13,12 @@
 - Listening, shadowing và “video lesson” dùng giọng `SpeechSynthesis` có sẵn trên thiết bị.
 - Chế độ shadowing đọc lần lượt từng câu và cho phép chỉnh khoảng nghỉ để nói lại.
 - Ghi âm phần luyện nói theo từng ngày, nghe lại và lưu trực tiếp trên thiết bị bằng IndexedDB.
-- Mỗi ngày có 8 useful phrases được chọn riêng theo đúng chủ đề; có thể đánh dấu bằng biểu tượng sao để ôn cách quãng theo lịch 1, 3, 7, 14 và 30 ngày.
+- Mỗi ngày có 8 useful phrases được chọn riêng theo đúng chủ đề; 3 Phrase cốt lõi được tự động đưa vào lịch ôn thích nghi và vẫn có thể đánh dấu thêm bằng biểu tượng sao.
 - Mỗi useful phrase có ít nhất 3 ví dụ công việc thực tế, kèm nút nghe và bản dịch tiếng Việt có sẵn.
 - Mỗi ngày có 8 lượt giao tiếp response-first: nghe câu hỏi, tự trả lời hoặc ghi âm trước, rồi mới mở Phrase gợi ý và câu mẫu; có nút thử lại từng lượt.
+- Luồng “Bài học hôm nay” có chế độ Nhanh 8 phút và Đầy đủ 15–20 phút, chỉ hiện một nhiệm vụ tại mỗi bước.
+- Ôn tập chủ động trộn 4 dạng Việt → Anh, nghe → gõ, điền chỗ trống và phản hồi tình huống; bắt buộc trả lời trước khi xem đáp án và tự điều chỉnh lịch theo 4 mức độ nhớ.
+- Speaking Practice lưu riêng ba bản A/B/C theo vòng 2 phút → 90 giây → 60 giây, kèm rubric tự đánh giá và chọn bản tốt nhất.
 - Mỗi ngày có một quiz riêng dựa trên chủ đề, framework và phrase của bài học đó.
 - Không cần YouTube, API hay tài khoản bên ngoài.
 

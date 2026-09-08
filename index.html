@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#2f6fed">
 <title>English 90 — Offline Fluency Program</title>
-<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css?v=7">
+<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 <header><div class="top"><div><div class="brand">English <span>90</span></div><div class="small">Offline Fluency Program</div></div><div class="top-actions"><div class="small">A2 → Work-ready communication</div><button class="review-button" onclick="openReview()">⭐ <span>Ôn tập</span><i id="reviewBadge" hidden></i></button><button class="settings-button" onclick="openSettings()">⚙️ <span>Cài đặt</span></button></div></div></header>
@@ -52,7 +52,7 @@
 </section>
 <section class="review-page" id="reviewPage" hidden>
   <div class="settings-heading">
-    <div><div class="tagline">SPACED REVIEW</div><h1>⭐ Ôn tập phrase</h1><p id="reviewSummary"></p></div>
+    <div><div class="tagline">ACTIVE RECALL</div><h1>⭐ Ôn tập chủ động</h1><p id="reviewSummary"></p></div>
     <button class="secondary" onclick="closeReview()">← Quay lại bài học</button>
   </div>
   <section class="card review-practice" id="reviewPractice"></section>
@@ -65,42 +65,58 @@
 </aside>
 <main>
 <section class="hero"><div class="tag" id="phase"></div><div class="hero-title" id="title"></div><div id="objective"></div></section>
-<div class="grid">
-<section class="card wide">
+<section class="daily-flow-launcher" id="dailyFlowLauncher">
+  <div><div class="tagline">BÀI HỌC HÔM NAY</div><h2>Học theo từng bước, chỉ tập trung vào một việc</h2><p class="small">Chọn thời lượng phù hợp. Tiến trình trong ngày được giữ ngay trên thiết bị.</p></div>
+  <div class="daily-flow-options"><button class="secondary" onclick="startDailyFlow('quick')"><b>⚡ Nhanh</b><span>8 phút</span></button><button class="primary" onclick="startDailyFlow('full')"><b>🎯 Đầy đủ</b><span>15–20 phút</span></button></div>
+</section>
+<section class="daily-flow-bar" id="dailyFlowBar" hidden>
+  <div class="daily-flow-meta"><div><div class="tagline" id="dailyFlowMode"></div><b id="dailyFlowStepTitle"></b></div><span id="dailyFlowStepCount"></span></div>
+  <div class="daily-flow-progress"><i id="dailyFlowProgress"></i></div>
+  <div class="daily-flow-controls"><button class="secondary" id="dailyFlowPrev" onclick="previousDailyFlowStep()">← Trước</button><button class="secondary" onclick="exitDailyFlow()">Thoát chế độ</button><button class="primary" id="dailyFlowNext" onclick="nextDailyFlowStep()">Tiếp theo →</button></div>
+</section>
+<div class="grid" id="lessonGrid">
+<section class="card wide flow-only" id="activeRecallCard">
+  <h2>🧠 Nhớ lại 3 Phrase cốt lõi</h2>
+  <p>Ba Phrase quan trọng của ngày đã được tự động đưa vào hàng ôn. Hãy tự nói hoặc nhập câu trả lời trước khi xem đáp án.</p>
+  <div id="dailyRecallPreview"></div>
+  <button class="primary" onclick="startDailyRecall()">Bắt đầu ôn 3 Phrase</button>
+</section>
+<section class="card wide" id="videoCard">
   <h2>🎬 Offline Video Lesson</h2>
   <div class="video"><div><div class="small" id="vcount"></div><div id="vtitle"></div><div id="vbody"></div></div>
   <div class="controls"><button onclick="prevSlide()">← Trước</button><button onclick="narrateSlide()">▶ Nghe</button><button onclick="stopSpeak()">■ Dừng</button><button onclick="nextSlide()">Tiếp →</button></div></div>
   <p class="small">Video lesson chạy bằng slide + giọng đọc có sẵn của thiết bị, nên dùng được offline và không cần YouTube.</p>
 </section>
-<section class="card"><h2>🧠 Framework</h2><div class="bigtext" id="framework"></div></section>
-<section class="card"><h2>🗣️ Useful Phrases</h2><div id="phrases"></div></section>
-<section class="card wide conversation-card"><div class="conversation-section-heading"><div><h2>🤝 Giao tiếp thực tế</h2><p class="small">Nghe câu hỏi, tự trả lời trước, sau đó mới xem Phrase gợi ý và câu mẫu.</p></div><div class="conversation-progress" id="conversationProgress"></div></div><div id="conversationContext"></div><div id="conversation"></div></section>
-<section class="card"><h2>🎧 Listening</h2>
+<section class="card" id="frameworkCard"><h2>🧠 Framework</h2><div class="bigtext" id="framework"></div></section>
+<section class="card" id="phrasesCard"><h2>🗣️ Useful Phrases</h2><div id="phrases"></div></section>
+<section class="card wide conversation-card" id="conversationCard"><div class="conversation-section-heading"><div><h2>🤝 Giao tiếp thực tế</h2><p class="small">Nghe câu hỏi, tự trả lời trước, sau đó mới xem Phrase gợi ý và câu mẫu.</p></div><div class="conversation-progress" id="conversationProgress"></div></div><div id="conversationContext"></div><div id="conversation"></div></section>
+<section class="card" id="listeningCard"><h2>🎧 Listening</h2>
   <p>Nghe 1 lần không nhìn transcript. Sau đó tóm tắt bằng English.</p>
   <button class="primary" onclick="startListening()">▶ Play listening</button>
   <button class="secondary" onclick="revealListening()">Show / Hide transcript</button>
   <div id="listenWrap" hidden><div id="listeningText"></div></div>
 </section>
-<section class="card"><h2>🎙️ Shadowing</h2><div id="shadow"></div>
+<section class="card" id="shadowingCard"><h2>🎙️ Shadowing</h2><div id="shadow"></div>
   <div class="practice-controls"><button class="primary" onclick="startShadowingPractice()">▶ Luyện từng câu</button><button class="secondary" onclick="stopShadowingPractice()">■ Dừng</button></div>
   <div class="practice-status small" id="shadowStatus"></div>
 </section>
-<section class="card wide"><h2>💬 Speaking Practice</h2><div class="bigtext" id="speaking"></div>
+<section class="card wide" id="speakingCard"><h2>💬 Speaking Practice — A/B/C</h2><div class="bigtext" id="speaking"></div>
   <div class="note"><b>Quy tắc:</b> Bắt đầu trong vòng 5 giây. Không nói lại từ đầu. Nếu quên một từ, hãy diễn đạt theo cách khác.</div>
-  <div class="recording-panel"><div><h3>🎤 Ghi âm câu trả lời</h3><p class="small" id="recordingStatus">Chưa có bản ghi cho ngày này.</p></div><div class="recording-controls"><button class="primary" id="startRecordingButton" onclick="startRecording()">● Bắt đầu ghi</button><button class="danger" id="stopRecordingButton" onclick="stopRecording()" hidden>■ Dừng và lưu</button><button class="secondary" id="deleteRecordingButton" onclick="deleteCurrentRecording()" hidden>Xóa bản ghi</button></div><audio id="recordingPlayback" controls hidden></audio></div>
+  <div class="recording-sequence"><div><b>Vòng luyện giảm thời gian</b><p class="small" id="recordingStatus">A: 2 phút → B: 90 giây → C: 60 giây. Giữ nguyên nhiệm vụ và nói lại tốt hơn.</p></div><div class="recording-rounds" id="recordingRounds"></div></div>
 </section>
-<section class="card"><h2>🔥 Mini Challenge</h2><div id="challenge"></div></section>
-<section class="card"><h2>📝 My Notes</h2><textarea id="notes" placeholder="Write new phrases, mistakes, or your own answer..." oninput="saveNote()"></textarea></section>
-<section class="card wide"><h2>✅ Quiz theo bài học</h2><div id="quiz"></div></section>
-<section class="card wide"><div class="checkrow"><input id="done" type="checkbox" onchange="toggleDone()"><label for="done"><b>Mark this day complete</b></label></div></section>
+<section class="card" id="challengeCard"><h2>🔥 Mini Challenge</h2><div id="challenge"></div></section>
+<section class="card" id="notesCard"><h2>📝 My Notes</h2><textarea id="notes" placeholder="Write new phrases, mistakes, or your own answer..." oninput="saveNote()"></textarea></section>
+<section class="card wide" id="quizCard"><h2>✅ Quiz theo bài học</h2><div id="quiz"></div></section>
+<section class="card wide" id="completionCard"><div class="checkrow"><input id="done" type="checkbox" onchange="toggleDone()"><label for="done"><b>Mark this day complete</b></label></div></section>
+<section class="card wide flow-only" id="dailyWrapCard"><h2>✅ Chốt phiên học</h2><p>Chọn đúng một điểm bạn muốn cải thiện ở lần học sau.</p><label class="field-label" for="dailyCorrectionGoal">Mục tiêu sửa duy nhất</label><textarea id="dailyCorrectionGoal" class="compact-textarea" placeholder="Ví dụ: Kết thúc câu trả lời bằng next step rõ ràng" oninput="saveDailyCorrectionGoal()"></textarea><div class="daily-wrap-actions"><button class="secondary" onclick="scheduleDailyCorePhrases(true)">Đưa 3 Phrase vào lịch ôn</button><button class="primary" onclick="completeDailyFlow()">Hoàn thành bài hôm nay</button></div></section>
 </div>
 <div class="footer">English 90 stores progress locally on this device. <button class="secondary" onclick="resetProgress()">Reset progress</button></div>
 </main>
 </div>
-<script src="translations.js?v=7"></script><script src="app.js?v=7"></script>
+<script src="translations.js?v=8"></script><script src="app.js?v=8"></script>
 <script>
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=7').then(registration=>registration.update()).catch(()=>{});
+  navigator.serviceWorker.register('./sw.js?v=8').then(registration=>registration.update()).catch(()=>{});
 }
 
 if(['localhost','127.0.0.1'].includes(location.hostname)){

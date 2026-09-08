@@ -44,12 +44,15 @@ let currentQuiz=[];
 let phrasebook=JSON.parse(localStorage.getItem('e90-phrasebook')||'{}');
 let reviewQueue=[];
 let reviewIndex=0;
+let reviewAttempted=false;
 let mediaRecorder=null;
 let recordingStream=null;
 let recordingChunks=[];
 let recordingTimer=null;
 let recordingStartedAt=0;
-let recordingAudioUrl='';
+let recordingSlot='A';
+let recordingAudioUrls={};
+let recordingMeta=JSON.parse(localStorage.getItem('e90-recording-meta')||'{}');
 let shadowingRun=0;
 let shadowingTimer=null;
 let conversationRecorder=null;
@@ -63,6 +66,9 @@ let conversationPromptRun=0;
 let conversationRecordingCancelled=false;
 let conversationAttempts=new Set();
 let conversationAudioUrls={};
+const savedDailyFlow=JSON.parse(localStorage.getItem('e90-daily-flow-state')||'null');
+let dailyFlowState=savedDailyFlow?.day===current?{mode:savedDailyFlow.mode,index:savedDailyFlow.index||0}:{mode:null,index:0};
+let dailyCorrectionGoals=JSON.parse(localStorage.getItem('e90-correction-goals')||'{}');
 const defaultSettings={voiceURI:'',preferGoogleUS:true,rateMultiplier:1,pitch:1,showTranslations:false,shadowPause:4};
 let settings={...defaultSettings,...JSON.parse(localStorage.getItem('e90-settings')||'{}')};
 
@@ -135,6 +141,30 @@ function speak(text, rate=0.9, onEnd){
 }
 function stopSpeak(){speechSynthesis.cancel();}
 
+const reviewModes=['vi-to-en','listen-type','cloze','situation'];
+const reviewModeLabels={
+  'vi-to-en':'Việt → Anh','listen-type':'Nghe → gõ','cloze':'Điền chỗ trống','situation':'Tình huống mới'
+};
+let autoReviewDays=JSON.parse(localStorage.getItem('e90-auto-review-days')||'{}');
+function ensurePhraseEntry(phrase,auto=false){
+  const existing=phrasebook[phrase]||{};
+  const entry=phrasebook[phrase]={vi:E90_VI.phrases[phrase],stage:existing.stage||0,nextReview:existing.nextReview??Date.now(),reviews:existing.reviews||0,auto:existing.auto||auto,skills:existing.skills||{}};
+  reviewModes.forEach(mode=>{entry.skills[mode]=entry.skills[mode]||{level:0,reviews:0,lastRating:''};});
+  return entry;
+}
+function scheduleDailyCorePhrases(showMessage=false){
+  const lesson=lessons[current-1],added=[];
+  lesson.phrases.slice(0,3).forEach(phrase=>{if(!phrasebook[phrase]) added.push(phrase);ensurePhraseEntry(phrase,true);});
+  autoReviewDays[current]=true;
+  localStorage.setItem('e90-auto-review-days',JSON.stringify(autoReviewDays));
+  savePhrasebook();
+  if(showMessage){const el=document.getElementById('dailyRecallPreview');if(el) el.innerHTML=`<div class="note">Đã lên lịch 3 Phrase cốt lõi cho Day ${current}.</div>`;}
+  return added;
+}
+function ensureDailyReviewPhrases(){
+  if(!autoReviewDays[current]) scheduleDailyCorePhrases();
+  else lessons[current-1].phrases.slice(0,3).filter(phrase=>phrasebook[phrase]).forEach(phrase=>ensurePhraseEntry(phrase,true));
+}
 function phraseStarButton(phrase){
   const saved=!!phrasebook[phrase];
   return `<button type="button" class="star-btn${saved?' active':''}" aria-label="${saved?'Bỏ khỏi sổ phrase':'Lưu vào sổ phrase'}" title="${saved?'Bỏ khỏi sổ phrase':'Lưu vào sổ phrase'}" onclick='togglePhrase(${JSON.stringify(phrase)},this)'>${saved?'★':'☆'}</button>`;
@@ -142,7 +172,7 @@ function phraseStarButton(phrase){
 function savePhrasebook(){localStorage.setItem('e90-phrasebook',JSON.stringify(phrasebook));updateReviewBadge();}
 function togglePhrase(phrase,button){
   if(phrasebook[phrase]) delete phrasebook[phrase];
-  else phrasebook[phrase]={vi:E90_VI.phrases[phrase],stage:0,nextReview:Date.now(),reviews:0};
+  else ensurePhraseEntry(phrase);
   savePhrasebook();
   const saved=!!phrasebook[phrase];
   button.textContent=saved?'★':'☆';
@@ -162,15 +192,20 @@ function formatReviewDate(timestamp){
   if(!timestamp||timestamp<=Date.now()) return 'Đến hạn ôn';
   return `Ôn ${new Date(timestamp).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}`;
 }
-function openReview(reviewAll=false){
-  stopSpeak();saveNote();stopShadowingPractice();stopConversationPractice();
+function openReview(reviewAll=false,onlyPhrases=null){
+  stopSpeak();saveNote();stopShadowingPractice();stopConversationPractice();stopRecording();
   document.getElementById('lessonView').hidden=true;
   document.getElementById('settingsPage').hidden=true;
   document.getElementById('reviewPage').hidden=false;
-  reviewQueue=(reviewAll?Object.keys(phrasebook):duePhrases()).sort((a,b)=>(phrasebook[a].nextReview||0)-(phrasebook[b].nextReview||0));
-  reviewIndex=0;renderReviewPage();
+  const reviewPhrases=onlyPhrases||(reviewAll?Object.keys(phrasebook):duePhrases());
+  reviewQueue=reviewPhrases.filter(phrase=>phrasebook[phrase]).sort((a,b)=>(phrasebook[a].nextReview||0)-(phrasebook[b].nextReview||0)).map((phrase,index)=>{
+    const entry=ensurePhraseEntry(phrase);
+    return {phrase,mode:reviewModes[((entry.reviews||0)+index)%reviewModes.length],retry:false};
+  });
+  reviewIndex=0;reviewAttempted=false;renderReviewPage();
   window.scrollTo({top:0,behavior:'smooth'});
 }
+function startDailyRecall(){scheduleDailyCorePhrases();openReview(false,lessons[current-1].phrases.slice(0,3));}
 function closeReview(){
   stopSpeak();
   document.getElementById('reviewPage').hidden=true;
@@ -183,8 +218,9 @@ function renderReviewPage(){
   const remaining=reviewQueue.length-reviewIndex;
   document.getElementById('reviewSummary').textContent=`${Object.keys(phrasebook).length} phrase đã lưu • ${duePhrases().length} phrase đến hạn`;
   if(remaining>0){
-    const phrase=reviewQueue[reviewIndex],entry=phrasebook[phrase];
-    practice.innerHTML=`<div class="review-progress">Còn ${remaining} phrase</div><div class="review-prompt">Hãy nói câu tiếng Anh tương ứng:</div><div class="review-front">${escapeHtml(entry.vi)}</div><button class="primary" id="revealReviewButton" onclick="revealReviewAnswer()">Hiện đáp án</button><div id="reviewAnswer" hidden><div class="review-answer">${escapeHtml(phrase)} <button class="audio-btn" onclick='speak(${JSON.stringify(phrase)})'>▶</button></div><div class="review-grades"><button onclick="gradePhrase('again')">Chưa nhớ</button><button onclick="gradePhrase('hard')">Khó</button><button class="primary" onclick="gradePhrase('good')">Đã nhớ</button></div></div>`;
+    const item=reviewQueue[reviewIndex],phrase=item.phrase,entry=ensurePhraseEntry(phrase),task=buildActiveReviewTask(phrase,item.mode);
+    reviewAttempted=false;
+    practice.innerHTML=`<div class="review-progress">Còn ${remaining} lượt • ${escapeHtml(reviewModeLabels[item.mode])}${item.retry?' • Luyện lại ngay':''}</div><div class="review-prompt">${escapeHtml(task.instruction)}</div><div class="review-front">${task.promptHtml}</div>${task.inputHtml}<div class="review-attempt-actions"><button class="secondary" id="reviewAttemptButton" onclick="registerReviewAttempt(${item.mode==='situation'})">${item.mode==='situation'?'Tôi đã nói':'Xác nhận câu trả lời'}</button><button class="primary" id="revealReviewButton" onclick="revealReviewAnswer()" disabled>🔒 Xem đáp án</button></div><div id="reviewAttemptStatus" class="small" aria-live="polite">Hãy trả lời trước khi mở đáp án.</div><div id="reviewAnswer" hidden><div class="review-answer">${escapeHtml(phrase)} <button class="audio-btn" onclick='speak(${JSON.stringify(phrase)})'>▶</button></div><div class="review-answer-example">${escapeHtml(task.answerExtra)}</div><div class="review-grades"><button onclick="gradePhrase('again')">Quên</button><button onclick="gradePhrase('hard')">Khó</button><button onclick="gradePhrase('slow')">Đúng nhưng chậm</button><button class="primary" onclick="gradePhrase('natural')">Tự nhiên</button></div></div>`;
   }else if(Object.keys(phrasebook).length){
     practice.innerHTML='<div class="review-empty"><div>🎉</div><h2>Đã ôn xong hôm nay</h2><p>Không còn phrase nào đến hạn.</p><button class="secondary" onclick="openReview(true)">Ôn lại tất cả</button></div>';
   }else{
@@ -194,23 +230,52 @@ function renderReviewPage(){
   library.innerHTML=Object.entries(phrasebook).sort((a,b)=>(a[1].nextReview||0)-(b[1].nextReview||0)).map(([phrase,entry])=>`<div class="library-item"><div><b>${escapeHtml(phrase)}</b><div class="small">${escapeHtml(entry.vi)} • ${formatReviewDate(entry.nextReview)}</div></div><button class="remove-phrase" aria-label="Bỏ phrase" title="Bỏ phrase" onclick='removePhrase(${JSON.stringify(phrase)})'>×</button></div>`).join('')||'<p class="small">Chưa có phrase nào được lưu.</p>';
   updateReviewBadge();
 }
+function buildActiveReviewTask(phrase,mode){
+  const entry=ensurePhraseEntry(phrase),example=(E90_VI.phraseExamples[phrase]||[])[0];
+  if(mode==='listen-type') return {instruction:'Nghe và gõ lại Phrase bạn nghe được.',promptHtml:`<button class="review-listen-button" onclick='speak(${JSON.stringify(phrase)},.82)'>▶ Nghe Phrase</button>`,inputHtml:'<input class="review-input" id="reviewAttemptInput" type="text" autocomplete="off" placeholder="Gõ Phrase tiếng Anh…">',answerExtra:example?.en||entry.vi};
+  if(mode==='cloze'){
+    const words=phrase.split(/\s+/),candidates=words.map((word,index)=>({index,score:word.replace(/[^A-Za-z]/g,'').length})).filter(item=>item.score>2).sort((a,b)=>b.score-a.score),blankIndex=candidates[0]?.index||0,missing=words[blankIndex].replace(/[^A-Za-z']/g,'');
+    words[blankIndex]=words[blankIndex].replace(missing,'_____');
+    return {instruction:'Điền từ còn thiếu để hoàn thành Phrase.',promptHtml:escapeHtml(words.join(' ')),inputHtml:'<input class="review-input" id="reviewAttemptInput" type="text" autocomplete="off" placeholder="Từ còn thiếu…">',answerExtra:`Từ cần điền: ${missing}${example?` • ${example.en}`:''}`};
+  }
+  if(mode==='situation'){
+    const lesson=lessons.find(item=>item.phrases.includes(phrase))||lessons[current-1],turn=E90_VI.conversation(lesson).turns.find(item=>item.phrase===phrase);
+    return {instruction:'Tự nói một câu trả lời tiếng Anh có dùng Phrase phù hợp.',promptHtml:translationItem({en:turn?.prompt.en||'How would you respond in this situation?',vi:turn?.prompt.vi||'Bạn sẽ trả lời thế nào trong tình huống này?'}),inputHtml:'<textarea class="review-input review-textarea" id="reviewAttemptInput" placeholder="Có thể ghi nhanh câu bạn vừa nói (không bắt buộc)…"></textarea>',answerExtra:example?.en||entry.vi};
+  }
+  return {instruction:'Hãy nói hoặc gõ Phrase tiếng Anh tương ứng.',promptHtml:escapeHtml(entry.vi),inputHtml:'<input class="review-input" id="reviewAttemptInput" type="text" autocomplete="off" placeholder="Gõ Phrase tiếng Anh…">',answerExtra:example?.en||entry.vi};
+}
+function registerReviewAttempt(spoken=false){
+  const input=document.getElementById('reviewAttemptInput');
+  if(!spoken&&!input?.value.trim()){document.getElementById('reviewAttemptStatus').textContent='Hãy gõ câu trả lời trước.';input?.focus();return;}
+  reviewAttempted=true;
+  const reveal=document.getElementById('revealReviewButton');
+  reveal.disabled=false;reveal.textContent='💡 Xem đáp án';
+  document.getElementById('reviewAttemptButton').disabled=true;
+  document.getElementById('reviewAttemptStatus').textContent='Đã ghi nhận câu trả lời. Bây giờ hãy so sánh với đáp án.';
+}
 function revealReviewAnswer(){
+  if(!reviewAttempted) return;
   document.getElementById('revealReviewButton').hidden=true;
   document.getElementById('reviewAnswer').hidden=false;
 }
 function gradePhrase(rating){
-  const phrase=reviewQueue[reviewIndex],entry=phrasebook[phrase];
+  const item=reviewQueue[reviewIndex],phrase=item?.phrase,entry=phrasebook[phrase];
   if(!entry) return;
-  const day=86400000;
-  if(rating==='again'){entry.stage=0;entry.nextReview=Date.now()+day;}
-  if(rating==='hard'){entry.stage=Math.max(0,entry.stage||0);entry.nextReview=Date.now()+Math.max(1,[1,3,7,14,30][entry.stage]||1)*day;}
-  if(rating==='good'){const stage=Math.max(0,entry.stage||0);entry.nextReview=Date.now()+[1,3,7,14,30][stage]*day;entry.stage=Math.min(4,stage+1);}
+  const day=86400000,skill=ensurePhraseEntry(phrase).skills[item.mode],level=skill.level||0;
+  const intervals={again:[1],hard:[1,2,3,5,7],slow:[2,4,7,14,30],natural:[4,8,16,30,60]};
+  if(rating==='again') skill.level=Math.max(0,level-1);
+  else if(rating==='hard') skill.level=level;
+  else skill.level=Math.min(4,level+1);
+  const days=intervals[rating][Math.min(level,intervals[rating].length-1)];
+  skill.lastRating=rating;skill.reviews=(skill.reviews||0)+1;skill.nextReview=Date.now()+days*day;
+  entry.stage=skill.level;entry.nextReview=skill.nextReview;
   entry.reviews=(entry.reviews||0)+1;
-  savePhrasebook();reviewIndex++;renderReviewPage();
+  if(rating==='again'&&!item.retry) reviewQueue.push({...item,retry:true});
+  savePhrasebook();reviewIndex++;reviewAttempted=false;renderReviewPage();
 }
 function removePhrase(phrase){
   delete phrasebook[phrase];savePhrasebook();
-  reviewQueue=reviewQueue.filter(item=>item!==phrase);
+  reviewQueue=reviewQueue.filter(item=>item.phrase!==phrase);
   reviewIndex=Math.min(reviewIndex,reviewQueue.length);
   renderReviewPage();
 }
@@ -408,45 +473,143 @@ function openRecordingDb(){
     request.onerror=()=>reject(request.error);
   });
 }
-async function saveRecording(day,blob){const db=await openRecordingDb();await new Promise((resolve,reject)=>{const tx=db.transaction('recordings','readwrite');tx.objectStore('recordings').put(blob,day);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();}
-async function getRecording(day){const db=await openRecordingDb();const blob=await new Promise((resolve,reject)=>{const request=db.transaction('recordings').objectStore('recordings').get(day);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});db.close();return blob;}
-async function removeRecording(day){const db=await openRecordingDb();await new Promise((resolve,reject)=>{const tx=db.transaction('recordings','readwrite');tx.objectStore('recordings').delete(day);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();}
+const recordingRoundPlan=[{slot:'A',seconds:120,label:'2 phút'},{slot:'B',seconds:90,label:'90 giây'},{slot:'C',seconds:60,label:'60 giây'}];
+const rubricLabels={clarity:'Rõ ý',fluency:'Ít ngập ngừng',phrase:'Dùng Phrase',ending:'Kết thúc rõ'};
+function recordingKey(day,slot){return `${day}:${slot}`;}
+function saveRecordingMeta(){localStorage.setItem('e90-recording-meta',JSON.stringify(recordingMeta));}
+function dayRecordingMeta(day){return recordingMeta[day]||(recordingMeta[day]={best:'',slots:{}});}
+async function saveRecording(day,slot,blob){const db=await openRecordingDb();await new Promise((resolve,reject)=>{const tx=db.transaction('recordings','readwrite');tx.objectStore('recordings').put(blob,recordingKey(day,slot));tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();}
+async function getRecording(day,slot){
+  const db=await openRecordingDb();
+  const read=key=>new Promise((resolve,reject)=>{const request=db.transaction('recordings').objectStore('recordings').get(key);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+  let blob=await read(recordingKey(day,slot));
+  if(!blob&&slot==='A') blob=await read(day);
+  db.close();return blob;
+}
+async function removeRecording(day,slot){const db=await openRecordingDb();await new Promise((resolve,reject)=>{const tx=db.transaction('recordings','readwrite');tx.objectStore('recordings').delete(recordingKey(day,slot));if(slot==='A') tx.objectStore('recordings').delete(day);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();}
 function formatDuration(seconds){return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;}
-async function loadRecording(day){
-  const audio=document.getElementById('recordingPlayback'),status=document.getElementById('recordingStatus');
+function rubricControls(slot,meta={}){
+  const rubric=meta.rubric||{};
+  return `<div class="recording-rubric"><div class="recording-rubric-title">Tự đánh giá 1–4</div>${Object.entries(rubricLabels).map(([key,label])=>`<label>${label}<select onchange="setRecordingRubric('${slot}','${key}',this.value)"><option value="">–</option>${[1,2,3,4].map(value=>`<option value="${value}"${Number(rubric[key])===value?' selected':''}>${value}</option>`).join('')}</select></label>`).join('')}</div>`;
+}
+function renderRecordingRounds(){
+  const container=document.getElementById('recordingRounds');if(!container) return;
+  Object.values(recordingAudioUrls).forEach(url=>URL.revokeObjectURL(url));recordingAudioUrls={};
+  const dayMeta=dayRecordingMeta(current);
+  container.innerHTML=recordingRoundPlan.map(round=>{const meta=dayMeta.slots[round.slot]||{},best=dayMeta.best===round.slot;return `<section class="recording-round${best?' best':''}" id="recordingRound${round.slot}"><div class="recording-round-heading"><div><span class="recording-slot">${round.slot}</span><b>${round.label}</b></div><button class="best-recording" onclick="selectBestRecording('${round.slot}')" title="Chọn bản tốt nhất">${best?'★ Tốt nhất':'☆ Chọn tốt nhất'}</button></div><p class="small" id="recordingStatus${round.slot}">${meta.createdAt?`Đã ghi ${new Date(meta.createdAt).toLocaleString('vi-VN')}`:'Chưa có bản ghi'}</p><div class="recording-controls"><button class="primary" id="startRecording${round.slot}" onclick="startRecording('${round.slot}')">● Ghi bản ${round.slot}</button><button class="danger" id="stopRecording${round.slot}" onclick="stopRecording()" hidden>■ Dừng và lưu</button><button class="secondary" id="deleteRecording${round.slot}" onclick="deleteCurrentRecording('${round.slot}')" hidden>Xóa</button></div><audio id="recordingPlayback${round.slot}" controls hidden></audio>${rubricControls(round.slot,meta)}</section>`;}).join('');
+  recordingRoundPlan.forEach(round=>loadRecordingSlot(current,round.slot));
+}
+async function loadRecordingSlot(day,slot){
+  const audio=document.getElementById(`recordingPlayback${slot}`),status=document.getElementById(`recordingStatus${slot}`),deleteButton=document.getElementById(`deleteRecording${slot}`);
   if(!audio||!status) return;
-  if(recordingAudioUrl){URL.revokeObjectURL(recordingAudioUrl);recordingAudioUrl='';}
+  if(recordingAudioUrls[slot]){URL.revokeObjectURL(recordingAudioUrls[slot]);delete recordingAudioUrls[slot];}
   try{
-    const blob=await getRecording(day);
+    const blob=await getRecording(day,slot);
     if(day!==current) return;
-    if(blob){recordingAudioUrl=URL.createObjectURL(blob);audio.src=recordingAudioUrl;audio.hidden=false;document.getElementById('deleteRecordingButton').hidden=false;status.textContent='Bản ghi đã được lưu trên thiết bị.';}
-    else{audio.removeAttribute('src');audio.hidden=true;document.getElementById('deleteRecordingButton').hidden=true;status.textContent='Chưa có bản ghi cho ngày này.';}
+    if(blob){recordingAudioUrls[slot]=URL.createObjectURL(blob);audio.src=recordingAudioUrls[slot];audio.hidden=false;deleteButton.hidden=false;const meta=dayRecordingMeta(day).slots[slot];status.textContent=meta?.duration?`Đã lưu • ${formatDuration(meta.duration)} • ${new Date(meta.createdAt).toLocaleString('vi-VN')}`:'Bản ghi đã được lưu trên thiết bị.';}
+    else{audio.removeAttribute('src');audio.hidden=true;deleteButton.hidden=true;status.textContent='Chưa có bản ghi';}
   }catch(error){status.textContent='Không thể đọc bản ghi trên trình duyệt này.';}
 }
-async function startRecording(){
-  const status=document.getElementById('recordingStatus');
+async function startRecording(slot='A'){
+  const status=document.getElementById(`recordingStatus${slot}`)||document.getElementById('recordingStatus');
   if(conversationRecorder?.state==='recording'){status.textContent='Hãy dừng bản ghi trong phần Giao tiếp thực tế trước.';return;}
+  if(mediaRecorder?.state==='recording'){status.textContent=`Đang ghi bản ${recordingSlot}. Hãy dừng trước.`;return;}
   if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){status.textContent='Trình duyệt này không hỗ trợ ghi âm.';return;}
   try{
     recordingStream=await navigator.mediaDevices.getUserMedia({audio:true});
-    const recordingDay=current;
+    const recordingDay=current,activeSlot=slot,target=recordingRoundPlan.find(round=>round.slot===slot)?.seconds||120;
+    recordingSlot=slot;
     recordingChunks=[];mediaRecorder=new MediaRecorder(recordingStream);
     mediaRecorder.ondataavailable=event=>{if(event.data.size) recordingChunks.push(event.data);};
     mediaRecorder.onstop=async()=>{
       clearInterval(recordingTimer);recordingTimer=null;
       recordingStream?.getTracks().forEach(track=>track.stop());recordingStream=null;
-      if(recordingChunks.length){await saveRecording(recordingDay,new Blob(recordingChunks,{type:mediaRecorder.mimeType||'audio/webm'}));}
-      mediaRecorder=null;
-      if(recordingDay===current){document.getElementById('startRecordingButton').hidden=false;document.getElementById('stopRecordingButton').hidden=true;loadRecording(recordingDay);}
+      const duration=Math.max(1,Math.round((Date.now()-recordingStartedAt)/1000));
+      let saved=false;
+      try{
+        if(recordingChunks.length){
+          await saveRecording(recordingDay,activeSlot,new Blob(recordingChunks,{type:mediaRecorder.mimeType||'audio/webm'}));
+          const dayMeta=dayRecordingMeta(recordingDay),previous=dayMeta.slots[activeSlot]||{};
+          dayMeta.slots[activeSlot]={...previous,duration,createdAt:Date.now()};saveRecordingMeta();saved=true;
+        }
+      }catch(error){
+        if(recordingDay===current&&status) status.textContent='Không thể lưu bản ghi trên trình duyệt này.';
+      }
+      mediaRecorder=null;recordingChunks=[];
+      if(recordingDay===current){document.getElementById(`startRecording${activeSlot}`).hidden=false;document.getElementById(`stopRecording${activeSlot}`).hidden=true;if(saved) loadRecordingSlot(recordingDay,activeSlot);}
     };
     mediaRecorder.start();recordingStartedAt=Date.now();
-    document.getElementById('startRecordingButton').hidden=true;document.getElementById('stopRecordingButton').hidden=false;
-    recordingTimer=setInterval(()=>{status.textContent=`Đang ghi âm • ${formatDuration(Math.floor((Date.now()-recordingStartedAt)/1000))}`;},250);
-    status.textContent='Đang ghi âm • 00:00';
+    document.getElementById(`startRecording${slot}`).hidden=true;document.getElementById(`stopRecording${slot}`).hidden=false;
+    recordingTimer=setInterval(()=>{const elapsed=Math.floor((Date.now()-recordingStartedAt)/1000),remaining=Math.max(0,target-elapsed);status.textContent=`Đang ghi • ${formatDuration(elapsed)} / ${formatDuration(target)} • còn ${formatDuration(remaining)}`;if(elapsed>=target) stopRecording();},250);
+    status.textContent=`Đang ghi • 00:00 / ${formatDuration(target)}`;
   }catch(error){status.textContent='Không thể truy cập micro. Hãy kiểm tra quyền của trình duyệt.';}
 }
 function stopRecording(){if(mediaRecorder?.state==='recording') mediaRecorder.stop();}
-async function deleteCurrentRecording(){if(!confirm('Xóa bản ghi của ngày này?')) return;await removeRecording(current);loadRecording(current);}
+async function deleteCurrentRecording(slot){if(!confirm(`Xóa bản ghi ${slot} của ngày này?`)) return;await removeRecording(current,slot);const dayMeta=dayRecordingMeta(current);delete dayMeta.slots[slot];if(dayMeta.best===slot) dayMeta.best='';saveRecordingMeta();renderRecordingRounds();}
+function selectBestRecording(slot){const dayMeta=dayRecordingMeta(current);if(!dayMeta.slots[slot]?.createdAt){document.getElementById(`recordingStatus${slot}`).textContent='Hãy ghi bản này trước khi chọn là tốt nhất.';return;}dayMeta.best=slot;saveRecordingMeta();renderRecordingRounds();}
+function setRecordingRubric(slot,criterion,value){const dayMeta=dayRecordingMeta(current),slotMeta=dayMeta.slots[slot]||(dayMeta.slots[slot]={});slotMeta.rubric=slotMeta.rubric||{};slotMeta.rubric[criterion]=Number(value)||0;saveRecordingMeta();}
+
+const dailyFlowPlans={
+  quick:[
+    {card:'activeRecallCard',title:'Nhớ lại 3 Phrase',minutes:1},
+    {card:'conversationCard',title:'Nghe và tự phản hồi',minutes:3},
+    {card:'speakingCard',title:'Ghi bản C — 60 giây',minutes:3},
+    {card:'dailyWrapCard',title:'Chọn một điểm cần sửa',minutes:1}
+  ],
+  full:[
+    {card:'activeRecallCard',title:'Nhớ lại 3 Phrase',minutes:2},
+    {card:'listeningCard',title:'Nghe và nắm ý chính',minutes:3},
+    {card:'conversationCard',title:'Nghe và tự phản hồi',minutes:4},
+    {card:'speakingCard',title:'Nói lại A/B/C',minutes:8},
+    {card:'dailyWrapCard',title:'Tự đánh giá và lên lịch ôn',minutes:2}
+  ]
+};
+function startDailyFlow(mode){
+  if(!dailyFlowPlans[mode]) return;
+  dailyFlowState={mode,index:0};
+  saveDailyFlowState();
+  applyDailyFlowView(true);
+}
+function saveDailyFlowState(){if(dailyFlowState.mode) localStorage.setItem('e90-daily-flow-state',JSON.stringify({...dailyFlowState,day:current}));else localStorage.removeItem('e90-daily-flow-state');}
+function applyDailyFlowView(scroll=false){
+  const grid=document.getElementById('lessonGrid'),launcher=document.getElementById('dailyFlowLauncher'),bar=document.getElementById('dailyFlowBar');
+  document.querySelectorAll('#lessonGrid>.card').forEach(card=>card.classList.remove('guided-active'));
+  if(!dailyFlowState.mode){grid.classList.remove('guided-session','quick-flow');launcher.hidden=false;bar.hidden=true;return;}
+  const plan=dailyFlowPlans[dailyFlowState.mode];
+  dailyFlowState.index=Math.min(Math.max(0,dailyFlowState.index),plan.length-1);
+  const step=plan[dailyFlowState.index];
+  grid.classList.add('guided-session');grid.classList.toggle('quick-flow',dailyFlowState.mode==='quick');launcher.hidden=true;bar.hidden=false;
+  document.getElementById(step.card)?.classList.add('guided-active');
+  const completedMinutes=plan.slice(0,dailyFlowState.index).reduce((sum,item)=>sum+item.minutes,0),totalMinutes=plan.reduce((sum,item)=>sum+item.minutes,0);
+  document.getElementById('dailyFlowMode').textContent=dailyFlowState.mode==='quick'?'CHẾ ĐỘ NHANH • 8 PHÚT':'CHẾ ĐỘ ĐẦY ĐỦ • 15–20 PHÚT';
+  document.getElementById('dailyFlowStepTitle').textContent=step.title;
+  document.getElementById('dailyFlowStepCount').textContent=`Bước ${dailyFlowState.index+1}/${plan.length} • khoảng ${step.minutes} phút`;
+  document.getElementById('dailyFlowProgress').style.width=`${Math.max(5,(completedMinutes/totalMinutes)*100)}%`;
+  document.getElementById('dailyFlowPrev').disabled=dailyFlowState.index===0;
+  document.getElementById('dailyFlowNext').textContent=dailyFlowState.index===plan.length-1?'Hoàn thành phiên ✓':'Tiếp theo →';
+  if(scroll) bar.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function nextDailyFlowStep(){
+  if(!dailyFlowState.mode) return;
+  const plan=dailyFlowPlans[dailyFlowState.mode];
+  if(dailyFlowState.index>=plan.length-1){completeDailyFlow();return;}
+  dailyFlowState.index++;saveDailyFlowState();applyDailyFlowView(true);
+}
+function previousDailyFlowStep(){if(dailyFlowState.mode&&dailyFlowState.index>0){dailyFlowState.index--;saveDailyFlowState();applyDailyFlowView(true);}}
+function exitDailyFlow(scroll=true){dailyFlowState={mode:null,index:0};saveDailyFlowState();applyDailyFlowView(false);if(scroll) document.getElementById('dailyFlowLauncher')?.scrollIntoView({behavior:'smooth',block:'center'});}
+function completeDailyFlow(){
+  scheduleDailyCorePhrases();
+  progress[current]=true;localStorage.setItem('e90-progress',JSON.stringify(progress));
+  document.getElementById('done').checked=true;renderSidebar();
+  exitDailyFlow(false);
+  const launcher=document.getElementById('dailyFlowLauncher');
+  launcher.classList.add('completed-session');
+  launcher.querySelector('h2').textContent='Đã hoàn thành bài học hôm nay ✓';
+  launcher.querySelector('p').textContent='Ba Phrase cốt lõi đã được lên lịch ôn thích nghi. Bạn vẫn có thể mở lại chế độ Nhanh hoặc Đầy đủ.';
+  launcher.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function saveDailyCorrectionGoal(){dailyCorrectionGoals[current]=document.getElementById('dailyCorrectionGoal').value;localStorage.setItem('e90-correction-goals',JSON.stringify(dailyCorrectionGoals));}
+
 function saveSettings(){localStorage.setItem('e90-settings',JSON.stringify(settings));}
 function loadVoiceOptions(){
   const select=document.getElementById('voiceSelect');
@@ -502,6 +665,7 @@ function renderSidebar(){
 function render(){
   stopConversationPractice();
   const L=lessons[current-1]; slideIndex=0;
+  ensureDailyReviewPhrases();
   document.getElementById('phase').innerHTML=translationItem({en:L.phase,vi:E90_VI.phases[L.phase]},'hero-translation');
   document.getElementById('title').innerHTML=translationItem(E90_VI.title(L),'hero-translation');
   document.getElementById('objective').innerHTML=translationList(E90_VI.objective(L),'hero-translation');
@@ -516,10 +680,16 @@ function render(){
   document.getElementById('speaking').innerHTML=translationList(E90_VI.speaking(L));
   document.getElementById('challenge').innerHTML=translationList(E90_VI.challenge(L));
   document.getElementById('notes').value=notes[L.day]||'';
+  document.getElementById('dailyCorrectionGoal').value=dailyCorrectionGoals[L.day]||'';
+  document.getElementById('dailyRecallPreview').innerHTML=`<div class="daily-recall-list">${L.phrases.slice(0,3).map((phrase,index)=>`<div><span>${index+1}</span>${escapeHtml(E90_VI.phrases[phrase])}</div>`).join('')}</div><p class="small">Không hiện tiếng Anh ở đây để bạn buộc phải tự nhớ lại.</p>`;
   document.getElementById('done').checked=!!progress[L.day];
   currentQuiz=buildLessonQuiz(L);
   document.getElementById('quiz').innerHTML=currentQuiz.map((q,qi)=>`<div class="quizq">${translationItem({en:`${qi+1}. ${q.q}`,vi:`${qi+1}. ${q.qVi}`} ,'quiz-question')}${q.opts.map((o,oi)=>`<div class="translation-item quiz-option"><div class="english-row"><label class="opt"><input type="radio" name="q${qi}" value="${oi}"> <span>${escapeHtml(o.en)}</span></label>${translateButton()}</div><div class="vi-translation"${settings.showTranslations?'':' hidden'} lang="vi">${escapeHtml(o.vi)}</div></div>`).join('')}</div>`).join('')+`<button class="primary" onclick="gradeQuiz()">Kiểm tra đáp án</button> <span id="score"></span>`;
-  renderVideo();renderSidebar();updateReviewBadge();loadRecording(L.day);
+  const launcher=document.getElementById('dailyFlowLauncher'),launcherTitle=launcher.querySelector('h2'),launcherDescription=launcher.querySelector('p');
+  launcher.classList.toggle('completed-session',!!progress[L.day]);
+  launcherTitle.textContent=progress[L.day]?'Đã hoàn thành bài học hôm nay ✓':'Học theo từng bước, chỉ tập trung vào một việc';
+  launcherDescription.textContent=progress[L.day]?'Bạn có thể luyện lại bằng chế độ Nhanh hoặc Đầy đủ.':'Chọn thời lượng phù hợp. Tiến trình trong ngày được giữ ngay trên thiết bị.';
+  renderVideo();renderSidebar();updateReviewBadge();renderRecordingRounds();applyDailyFlowView(false);
 }
 function renderVideo(){
   const L=lessons[current-1], slides=slideTemplates(L), s=slides[slideIndex];
@@ -530,7 +700,7 @@ function renderVideo(){
 function nextSlide(){const n=slideTemplates(lessons[current-1]).length;slideIndex=(slideIndex+1)%n;renderVideo();}
 function prevSlide(){const n=slideTemplates(lessons[current-1]).length;slideIndex=(slideIndex-1+n)%n;renderVideo();}
 function narrateSlide(){const L=lessons[current-1],s=slideTemplates(L)[slideIndex];speak(`${s.title.en}. ${s.body.map(item=>item.en).join(' ')}`,0.88);}
-function selectDay(d){stopShadowingPractice();stopRecording();current=d;localStorage.setItem('e90-current',d);render();window.scrollTo({top:0,behavior:'smooth'});}
+function selectDay(d){stopShadowingPractice();stopRecording();exitDailyFlow(false);current=d;localStorage.setItem('e90-current',d);render();window.scrollTo({top:0,behavior:'smooth'});}
 function saveNote(){notes[current]=document.getElementById('notes').value;localStorage.setItem('e90-notes',JSON.stringify(notes));}
 function toggleDone(){progress[current]=document.getElementById('done').checked;localStorage.setItem('e90-progress',JSON.stringify(progress));renderSidebar();}
 function gradeQuiz(){
