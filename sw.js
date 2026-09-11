@@ -1,6 +1,6 @@
-const CACHE='english90-v8';
+const CACHE='english90-v9';
 const CACHE_PREFIX='english90-';
-const ASSETS=['./','./index.html','./styles.css?v=8','./translations.js?v=8','./app.js?v=8','./manifest.json'];
+const ASSETS=['./','./index.html','./styles.css?v=9','./translations.js?v=9','./content-v9.js?v=9','./features-v9.js?v=9','./app.js?v=9','./manifest.json'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));

@@ -35,6 +35,7 @@ const lessonPhrasePlan={
   90:[30,31,21,7,26,28,11,12]
 };
 lessons.forEach(lesson=>{lesson.phrases=lessonPhrasePlan[lesson.day].map(index=>phraseCatalog[index-1]);});
+E90_V9.upgradeLessons(lessons,E90_VI);
 
 let current = Number(localStorage.getItem('e90-current')||1);
 let progress = JSON.parse(localStorage.getItem('e90-progress')||'{}');
@@ -69,7 +70,7 @@ let conversationAudioUrls={};
 const savedDailyFlow=JSON.parse(localStorage.getItem('e90-daily-flow-state')||'null');
 let dailyFlowState=savedDailyFlow?.day===current?{mode:savedDailyFlow.mode,index:savedDailyFlow.index||0}:{mode:null,index:0};
 let dailyCorrectionGoals=JSON.parse(localStorage.getItem('e90-correction-goals')||'{}');
-const defaultSettings={voiceURI:'',preferGoogleUS:true,rateMultiplier:1,pitch:1,showTranslations:false,shadowPause:4};
+const defaultSettings={voiceURI:'',preferGoogleUS:true,rateMultiplier:1,pitch:1,showTranslations:false,shadowPause:4,voiceAccent:'all',voiceGender:'all',voiceLocalOnly:false,asrEnabled:false};
 let settings={...defaultSettings,...JSON.parse(localStorage.getItem('e90-settings')||'{}')};
 
 const slideTemplates = (L)=>[
@@ -99,7 +100,8 @@ function audioButton(text,label='Phát câu tiếng Anh'){
 }
 function phraseBlock(phrase){
   const examples=E90_VI.phraseExamples[phrase]||[];
-  return `<div class="phrase-card">${translationItem(
+  const phraseMeta=E90_V9.phraseBank.find(item=>item.en===phrase),categoryLabel=phraseMeta?E90_V9.categoryNames[phraseMeta.category]:'';
+  return `<div class="phrase-card">${categoryLabel?`<div class="phrase-category">${escapeHtml(categoryLabel)}</div>`:''}${translationItem(
     {en:phrase,vi:E90_VI.phrases[phrase]},
     'phrase',
     `${phraseStarButton(phrase)}${audioButton(phrase)}`
@@ -196,6 +198,7 @@ function openReview(reviewAll=false,onlyPhrases=null){
   stopSpeak();saveNote();stopShadowingPractice();stopConversationPractice();stopRecording();
   document.getElementById('lessonView').hidden=true;
   document.getElementById('settingsPage').hidden=true;
+  document.getElementById('hubPage').hidden=true;
   document.getElementById('reviewPage').hidden=false;
   const reviewPhrases=onlyPhrases||(reviewAll?Object.keys(phrasebook):duePhrases());
   reviewQueue=reviewPhrases.filter(phrase=>phrasebook[phrase]).sort((a,b)=>(phrasebook[a].nextReview||0)-(phrasebook[b].nextReview||0)).map((phrase,index)=>{
@@ -239,7 +242,7 @@ function buildActiveReviewTask(phrase,mode){
     return {instruction:'Điền từ còn thiếu để hoàn thành Phrase.',promptHtml:escapeHtml(words.join(' ')),inputHtml:'<input class="review-input" id="reviewAttemptInput" type="text" autocomplete="off" placeholder="Từ còn thiếu…">',answerExtra:`Từ cần điền: ${missing}${example?` • ${example.en}`:''}`};
   }
   if(mode==='situation'){
-    const lesson=lessons.find(item=>item.phrases.includes(phrase))||lessons[current-1],turn=E90_VI.conversation(lesson).turns.find(item=>item.phrase===phrase);
+    const lesson=lessons.find(item=>item.phrases.includes(phrase))||lessons[current-1],conversationData=E90_VI.conversation(lesson),allTurns=conversationData.turns||Object.values(conversationData.branches||{}).flatMap(branch=>branch.turns||[]),turn=allTurns.find(item=>item.phrase===phrase);
     return {instruction:'Tự nói một câu trả lời tiếng Anh có dùng Phrase phù hợp.',promptHtml:translationItem({en:turn?.prompt.en||'How would you respond in this situation?',vi:turn?.prompt.vi||'Bạn sẽ trả lời thế nào trong tình huống này?'}),inputHtml:'<textarea class="review-input review-textarea" id="reviewAttemptInput" placeholder="Có thể ghi nhanh câu bạn vừa nói (không bắt buộc)…"></textarea>',answerExtra:example?.en||entry.vi};
   }
   return {instruction:'Hãy nói hoặc gõ Phrase tiếng Anh tương ứng.',promptHtml:escapeHtml(entry.vi),inputHtml:'<input class="review-input" id="reviewAttemptInput" type="text" autocomplete="off" placeholder="Gõ Phrase tiếng Anh…">',answerExtra:example?.en||entry.vi};
@@ -530,7 +533,7 @@ async function startRecording(slot='A'){
         if(recordingChunks.length){
           await saveRecording(recordingDay,activeSlot,new Blob(recordingChunks,{type:mediaRecorder.mimeType||'audio/webm'}));
           const dayMeta=dayRecordingMeta(recordingDay),previous=dayMeta.slots[activeSlot]||{};
-          dayMeta.slots[activeSlot]={...previous,duration,createdAt:Date.now()};saveRecordingMeta();saved=true;
+          dayMeta.slots[activeSlot]={...previous,duration,createdAt:Date.now()};saveRecordingMeta();e90QualitySessions.push(Date.now());e90QualitySessions=e90QualitySessions.slice(-365);writeV9Json('e90-quality-sessions',e90QualitySessions);saved=true;
         }
       }catch(error){
         if(recordingDay===current&&status) status.textContent='Không thể lưu bản ghi trên trình duyệt này.';
@@ -600,6 +603,7 @@ function exitDailyFlow(scroll=true){dailyFlowState={mode:null,index:0};saveDaily
 function completeDailyFlow(){
   scheduleDailyCorePhrases();
   progress[current]=true;localStorage.setItem('e90-progress',JSON.stringify(progress));
+  e90QualitySessions.push(Date.now());e90QualitySessions=e90QualitySessions.slice(-365);writeV9Json('e90-quality-sessions',e90QualitySessions);
   document.getElementById('done').checked=true;renderSidebar();
   exitDailyFlow(false);
   const launcher=document.getElementById('dailyFlowLauncher');
@@ -614,7 +618,8 @@ function saveSettings(){localStorage.setItem('e90-settings',JSON.stringify(setti
 function loadVoiceOptions(){
   const select=document.getElementById('voiceSelect');
   if(!select) return;
-  const voices=speechSynthesis.getVoices().filter(voice=>voice.lang.toLowerCase().startsWith('en'));
+  const genderOf=voice=>String(voice.gender||(/female|samantha|victoria|karen|moira|tessa|zira|susan/i.test(voice.name)?'female':/male|daniel|alex|fred|david|mark/i.test(voice.name)?'male':'')).toLowerCase();
+  const voices=speechSynthesis.getVoices().filter(voice=>voice.lang.toLowerCase().startsWith('en')).filter(voice=>settings.voiceAccent==='us'?/en[-_]us/i.test(voice.lang):settings.voiceAccent==='gb'?/en[-_]gb/i.test(voice.lang):true).filter(voice=>!settings.voiceLocalOnly||voice.localService).filter(voice=>settings.voiceGender==='all'||genderOf(voice)===settings.voiceGender);
   select.innerHTML='<option value="">Giọng mặc định của thiết bị</option>'+voices.map(voice=>`<option value="${escapeHtml(voice.voiceURI)}">${escapeHtml(voice.name)} — ${escapeHtml(voice.lang)}${voice.localService?' (offline)':''}</option>`).join('');
   const selectedVoice=preferredVoice(voices);
   if(selectedVoice) select.value=selectedVoice.voiceURI;
@@ -631,12 +636,18 @@ function syncSettingsControls(){
   document.getElementById('shadowPauseSetting').value=settings.shadowPause;
   document.getElementById('shadowPauseValue').textContent=`${settings.shadowPause} giây`;
   document.getElementById('showTranslationsSetting').checked=!!settings.showTranslations;
+  document.getElementById('voiceAccent').value=settings.voiceAccent||'all';
+  document.getElementById('voiceGender').value=settings.voiceGender||'all';
+  document.getElementById('voiceLocalOnly').checked=!!settings.voiceLocalOnly;
+  document.getElementById('asrSetting').checked=!!settings.asrEnabled;
+  renderProfileSettings();
   loadVoiceOptions();
 }
 function openSettings(){
   stopShadowingPractice();stopConversationPractice();stopRecording();saveNote();
   document.getElementById('lessonView').hidden=true;
   document.getElementById('reviewPage').hidden=true;
+  document.getElementById('hubPage').hidden=true;
   document.getElementById('settingsPage').hidden=false;
   syncSettingsControls();
   window.scrollTo({top:0,behavior:'smooth'});
@@ -657,7 +668,7 @@ function previewVoice(){speak('Hello! This is your English 90 practice voice.',1
 function resetSettings(){settings={...defaultSettings};saveSettings();syncSettingsControls();stopSpeak();}
 function renderSidebar(){
   const list=document.getElementById('days');
-  list.innerHTML=lessons.map(L=>`<button class="daybtn ${L.day===current?'active':''} ${progress[L.day]?'done':''}" onclick="selectDay(${L.day})" title="${escapeHtml(E90_VI.topicVi(L))}"><span class="dot"></span><span><b>Day ${L.day}</b><br><span class="small">${escapeHtml(L.title)}</span></span></button>`).join('');
+  list.innerHTML=lessons.map(L=>{const relevant=relevanceForLesson(L)>0;return `<button class="daybtn ${L.day===current?'active':''} ${progress[L.day]?'done':''} ${relevant?'recommended-day':''}" onclick="selectDay(${L.day})" title="${escapeHtml(E90_VI.topicVi(L))}${relevant?' • Phù hợp với hồ sơ của bạn':''}"><span class="dot"></span><span><b>Day ${L.day}${relevant?' · Gợi ý':''}</b><br><span class="small">${escapeHtml(L.title)}</span></span></button>`;}).join('');
   const done=Object.values(progress).filter(Boolean).length;
   document.getElementById('pct').textContent=`${done}/90 ngày đã hoàn thành`;
   document.getElementById('bar').style.width=`${done/90*100}%`;
@@ -671,11 +682,7 @@ function render(){
   document.getElementById('objective').innerHTML=translationList(E90_VI.objective(L),'hero-translation');
   document.getElementById('framework').innerHTML=translationItem(E90_VI.framework(L),'framework-translation');
   document.getElementById('phrases').innerHTML=L.phrases.map(phraseBlock).join('');
-  const conversation=E90_VI.conversation(L);
-  document.getElementById('conversationContext').innerHTML=translationItem(conversation.context,'conversation-context');
-  document.getElementById('conversation').innerHTML=conversation.turns.map((turn,index)=>renderConversationTurn(turn,index,conversation.turns.length)).join('');
-  updateConversationProgress(conversation.turns.length);
-  document.getElementById('listeningText').innerHTML=translationList(E90_VI.listening(L));
+  renderConversationExperience(L);
   document.getElementById('shadow').innerHTML=E90_VI.shadowing(L).map((item,index)=>translationItem(item,'',`<button type="button" class="audio-btn" aria-label="Nghe riêng câu này" title="Nghe riêng câu này" onclick="playShadowSentence(${index})">▶</button>`)).join('');
   document.getElementById('speaking').innerHTML=translationList(E90_VI.speaking(L));
   document.getElementById('challenge').innerHTML=translationList(E90_VI.challenge(L));
@@ -689,7 +696,7 @@ function render(){
   launcher.classList.toggle('completed-session',!!progress[L.day]);
   launcherTitle.textContent=progress[L.day]?'Đã hoàn thành bài học hôm nay ✓':'Học theo từng bước, chỉ tập trung vào một việc';
   launcherDescription.textContent=progress[L.day]?'Bạn có thể luyện lại bằng chế độ Nhanh hoặc Đầy đủ.':'Chọn thời lượng phù hợp. Tiến trình trong ngày được giữ ngay trên thiết bị.';
-  renderVideo();renderSidebar();updateReviewBadge();renderRecordingRounds();applyDailyFlowView(false);
+  renderVideo();renderSidebar();updateReviewBadge();renderRecordingRounds();renderV9LessonTools(L);applyDailyFlowView(false);
 }
 function renderVideo(){
   const L=lessons[current-1], slides=slideTemplates(L), s=slides[slideIndex];

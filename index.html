@@ -4,10 +4,10 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#2f6fed">
 <title>English 90 — Offline Fluency Program</title>
-<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css?v=8">
+<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
-<header><div class="top"><div><div class="brand">English <span>90</span></div><div class="small">Offline Fluency Program</div></div><div class="top-actions"><div class="small">A2 → Work-ready communication</div><button class="review-button" onclick="openReview()">⭐ <span>Ôn tập</span><i id="reviewBadge" hidden></i></button><button class="settings-button" onclick="openSettings()">⚙️ <span>Cài đặt</span></button></div></div></header>
+<header><div class="top"><div><div class="brand">English <span>90</span></div><div class="small">Offline Fluency Program</div></div><div class="top-actions"><div class="small">A2 → Work-ready communication</div><button class="review-button" onclick="openReview()">⭐ <span>Ôn tập</span><i id="reviewBadge" hidden></i></button><button onclick="openHub('competency')">📊 <span>Năng lực</span></button><button onclick="openHub('answers')">🗂️ <span>Answer Bank</span></button><button class="settings-button" onclick="openSettings()">⚙️ <span>Cài đặt</span></button></div></div></header>
 <section class="settings-page" id="settingsPage" hidden>
   <div class="settings-heading">
     <div><div class="tagline">ENGLISH 90</div><h1>⚙️ Cài đặt</h1><p>Tùy chỉnh trải nghiệm nghe và học trên thiết bị này.</p></div>
@@ -21,6 +21,18 @@
         <select id="voiceSelect" onchange="setVoice(this.value)"><option value="">Giọng mặc định của thiết bị</option></select>
         <div class="setting-footer"><span class="small" id="voiceStatus">Đang tải danh sách giọng nói của thiết bị…</span><button class="primary" onclick="previewVoice()">▶ Nghe thử</button></div>
       </div>
+    </section>
+    <section class="card settings-card wide">
+      <div class="setting-icon">🧭</div><div class="setting-content"><h2>Hồ sơ cá nhân hóa</h2><p class="small">Dữ liệu chỉ lưu trên thiết bị và dùng để gợi ý bài phù hợp.</p><div id="profileSettings"></div><button class="secondary" onclick="openOnboarding(true)">Chỉnh hồ sơ</button></div>
+    </section>
+    <section class="card settings-card wide">
+      <div class="setting-icon">🎛️</div><div class="setting-content"><h2>Bộ lọc giọng</h2><div class="voice-filter-row"><label>Accent<select id="voiceAccent" onchange="setVoiceFilter('accent',this.value)"><option value="all">Tất cả</option><option value="us">Mỹ</option><option value="gb">Anh</option></select></label><label>Giới tính (nếu có metadata)<select id="voiceGender" onchange="setVoiceFilter('gender',this.value)"><option value="all">Tất cả</option><option value="female">Nữ</option><option value="male">Nam</option></select></label><label><input id="voiceLocalOnly" type="checkbox" onchange="setVoiceFilter('localOnly',this.checked)"> Chỉ giọng offline/local</label></div></div>
+    </section>
+    <section class="card settings-card wide">
+      <div class="setting-icon">💾</div><div class="setting-content"><h2>Backup &amp; Restore</h2><p class="small">JSON gồm tiến độ, Phrasebook, ghi chú, Answer Bank, rubric và metadata. Audio được xuất riêng.</p><div class="setting-footer"><button class="secondary" onclick="exportBackup()">Xuất JSON</button><button class="secondary" onclick="document.getElementById('restoreFile').click()">Nhập JSON</button><button class="secondary" onclick="exportAudioFiles()">Xuất danh sách audio</button><input id="restoreFile" type="file" accept="application/json" hidden onchange="restoreBackup(this.files[0]);this.value=''"></div><div id="backupStatus" class="small"></div></div>
+    </section>
+    <section class="card settings-card wide">
+      <div class="setting-icon">🗣️</div><div class="setting-content"><div class="toggle-setting"><div><h2>Speech Recognition thử nghiệm</h2><p class="small">Chỉ bật khi bạn chủ động chọn. Trình duyệt có thể dùng mạng và có thể nhận sai giọng không bản xứ; toàn bộ bài học vẫn dùng được khi tắt.</p></div><label class="switch"><input id="asrSetting" type="checkbox" onchange="setAsrEnabled(this.checked)"><span></span></label></div></div>
     </section>
     <section class="card settings-card">
       <div class="setting-icon">⏱️</div>
@@ -49,6 +61,11 @@
     </section>
   </div>
   <div class="settings-actions"><button class="secondary" onclick="resetSettings()">Khôi phục mặc định</button><button class="primary" onclick="closeSettings()">Xong</button></div>
+</section>
+<section class="hub-page" id="hubPage" hidden>
+  <div class="settings-heading"><div><div class="tagline">EVIDENCE-BASED PRACTICE</div><h1 id="hubTitle">Năng lực</h1><p id="hubSubtitle"></p></div><button class="secondary" onclick="closeHub()">← Quay lại bài học</button></div>
+  <nav class="hub-tabs"><button onclick="openHub('competency')">📊 Năng lực</button><button onclick="openHub('answers')">🗂️ Answer Bank</button><button onclick="openHub('errors')">🛠️ Sổ lỗi</button><button onclick="openHub('utilities')">🧰 Tiện ích</button></nav>
+  <div id="hubContent"></div>
 </section>
 <section class="review-page" id="reviewPage" hidden>
   <div class="settings-heading">
@@ -90,16 +107,16 @@
 <section class="card" id="frameworkCard"><h2>🧠 Framework</h2><div class="bigtext" id="framework"></div></section>
 <section class="card" id="phrasesCard"><h2>🗣️ Useful Phrases</h2><div id="phrases"></div></section>
 <section class="card wide conversation-card" id="conversationCard"><div class="conversation-section-heading"><div><h2>🤝 Giao tiếp thực tế</h2><p class="small">Nghe câu hỏi, tự trả lời trước, sau đó mới xem Phrase gợi ý và câu mẫu.</p></div><div class="conversation-progress" id="conversationProgress"></div></div><div id="conversationContext"></div><div id="conversation"></div></section>
-<section class="card" id="listeningCard"><h2>🎧 Listening</h2>
-  <p>Nghe 1 lần không nhìn transcript. Sau đó tóm tắt bằng English.</p>
-  <button class="primary" onclick="startListening()">▶ Play listening</button>
-  <button class="secondary" onclick="revealListening()">Show / Hide transcript</button>
-  <div id="listenWrap" hidden><div id="listeningText"></div></div>
+<section class="card wide listening-ladder" id="listeningCard"><h2>🎧 Listening Ladder</h2>
+  <div class="ladder-tabs" id="listeningLevels"></div><div id="listeningStage"></div>
 </section>
 <section class="card" id="shadowingCard"><h2>🎙️ Shadowing</h2><div id="shadow"></div>
   <div class="practice-controls"><button class="primary" onclick="startShadowingPractice()">▶ Luyện từng câu</button><button class="secondary" onclick="stopShadowingPractice()">■ Dừng</button></div>
   <div class="practice-status small" id="shadowStatus"></div>
 </section>
+<section class="card wide" id="pronunciationCard"><h2>🔬 Pronunciation Lab</h2><p class="small">Mục tiêu: dễ hiểu, rhythm, word stress, sentence stress, intonation và linking — không chấm “giống người bản xứ”.</p><div id="pronunciationLab"></div></section>
+<section class="card wide" id="errorCard"><h2>🛠️ Sổ lỗi sau bài nói</h2><p class="small">Lưu tối đa 3 lỗi quan trọng của ngày này. “Câu tốt hơn” sẽ tự vào lịch ôn chủ động.</p><div id="dailyErrors"></div><button class="secondary" onclick="addErrorRow()">+ Thêm lỗi</button></section>
+<section class="card wide" id="missionCard"><h2>🚀 Mission tuần</h2><div id="weeklyMission"></div></section>
 <section class="card wide" id="speakingCard"><h2>💬 Speaking Practice — A/B/C</h2><div class="bigtext" id="speaking"></div>
   <div class="note"><b>Quy tắc:</b> Bắt đầu trong vòng 5 giây. Không nói lại từ đầu. Nếu quên một từ, hãy diễn đạt theo cách khác.</div>
   <div class="recording-sequence"><div><b>Vòng luyện giảm thời gian</b><p class="small" id="recordingStatus">A: 2 phút → B: 90 giây → C: 60 giây. Giữ nguyên nhiệm vụ và nói lại tốt hơn.</p></div><div class="recording-rounds" id="recordingRounds"></div></div>
@@ -113,14 +130,15 @@
 <div class="footer">English 90 stores progress locally on this device. <button class="secondary" onclick="resetProgress()">Reset progress</button></div>
 </main>
 </div>
-<script src="translations.js?v=8"></script><script src="app.js?v=8"></script>
+<dialog id="onboardingDialog" class="onboarding-dialog"><form method="dialog" onsubmit="saveOnboarding(event)"><div class="tagline">CÁ NHÂN HÓA OFFLINE</div><h2>Thiết lập mục tiêu 90 ngày</h2><p>Mọi thông tin chỉ lưu trên thiết bị này.</p><label>Vai trò công việc<input id="profileRole" required placeholder="Ví dụ: Product Manager"></label><label>Ngành nghề<input id="profileIndustry" required placeholder="Ví dụ: Phần mềm"></label><label>Đối tác thường giao tiếp<input id="profilePartners" required placeholder="Ví dụ: Khách hàng Mỹ, đội kỹ thuật"></label><label>Tình huống tiếng Anh khó nhất<textarea id="profileChallenge" required></textarea></label><label>Mục tiêu sau 90 ngày<textarea id="profileGoal" required></textarea></label><div class="dialog-actions"><button id="onboardingCancel" type="button" class="secondary" onclick="document.getElementById('onboardingDialog').close()">Để sau</button><button class="primary" value="default">Lưu hồ sơ</button></div></form></dialog>
+<script src="translations.js?v=9"></script><script src="content-v9.js?v=9"></script><script src="features-v9.js?v=9"></script><script src="app.js?v=9"></script>
 <script>
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js?v=8').then(registration=>registration.update()).catch(()=>{});
+  navigator.serviceWorker.register('./sw.js?v=9').then(registration=>registration.update()).catch(()=>{});
 }
 
 if(['localhost','127.0.0.1'].includes(location.hostname)){
-  const watchedFiles=['./index.html','./styles.css','./translations.js','./app.js','./sw.js'];
+  const watchedFiles=['./index.html','./styles.css','./translations.js','./content-v9.js','./features-v9.js','./app.js','./sw.js'];
   let currentFingerprint='';
   let checkingForUpdates=false;
 
