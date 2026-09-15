@@ -36,7 +36,7 @@
     </section>
     <section class="card settings-card">
       <div class="setting-icon">⏱️</div>
-      <div class="setting-content"><h2>Tốc độ đọc</h2><p class="small">Áp dụng tương đối cho Listening, Shadowing và phần nghe thử.</p>
+      <div class="setting-content"><h2>Tốc độ đọc</h2><p class="small">Áp dụng tương đối cho Listening, Echoing và phần nghe thử.</p>
         <div class="range-label"><label for="rateSetting">Tốc độ</label><output id="rateValue">1.00×</output></div>
         <input id="rateSetting" type="range" min="0.7" max="1.4" step="0.05" value="1" oninput="setRate(this.value)">
       </div>
@@ -50,9 +50,9 @@
     </section>
     <section class="card settings-card wide">
       <div class="setting-icon">⏸️</div>
-      <div class="setting-content"><h2>Khoảng nghỉ Shadowing</h2><p class="small">Thời gian để bạn nói lại sau khi nghe từng câu.</p>
-        <div class="range-label"><label for="shadowPauseSetting">Khoảng nghỉ</label><output id="shadowPauseValue">4 giây</output></div>
-        <input id="shadowPauseSetting" type="range" min="2" max="8" step="1" value="4" oninput="setShadowPause(this.value)">
+      <div class="setting-content"><h2>Độ trễ Echoing</h2><p class="small">Khoảng đệm ngắn trước khi bắt đầu ghi, giúp giữ nguyên âm thanh vừa nghe.</p>
+        <div class="range-label"><label for="echoDelaySetting">Độ trễ</label><output id="echoDelayValue">0,5 giây</output></div>
+        <input id="echoDelaySetting" type="range" min="0" max="2" step="0.5" value="0.5" oninput="setEchoDelay(this.value)">
       </div>
     </section>
     <section class="card settings-card wide">
@@ -110,9 +110,8 @@
 <section class="card wide listening-ladder" id="listeningCard"><h2>🎧 Listening Ladder</h2>
   <div class="ladder-tabs" id="listeningLevels"></div><div id="listeningStage"></div>
 </section>
-<section class="card" id="shadowingCard"><h2>🎙️ Shadowing</h2><div id="shadow"></div>
-  <div class="practice-controls"><button class="primary" onclick="startShadowingPractice()">▶ Luyện từng câu</button><button class="secondary" onclick="stopShadowingPractice()">■ Dừng</button></div>
-  <div class="practice-status small" id="shadowStatus"></div>
+<section class="card wide echoing-card" id="echoingCard"><div class="conversation-section-heading"><div><h2>🎙️ Echoing — Nghe và nhắc lại</h2><p class="small">Nghe một cụm ngắn, nhắc lại ngay, rồi so sánh giọng mẫu với bản ghi của bạn.</p></div><div class="conversation-progress" id="echoingProgress"></div></div>
+  <div id="echoingPractice"></div>
 </section>
 <section class="card wide" id="pronunciationCard"><h2>🔬 Pronunciation Lab</h2><p class="small">Mục tiêu: dễ hiểu, rhythm, word stress, sentence stress, intonation và linking — không chấm “giống người bản xứ”.</p><div id="pronunciationLab"></div></section>
 <section class="card wide" id="errorCard"><h2>🛠️ Sổ lỗi sau bài nói</h2><p class="small">Lưu tối đa 3 lỗi quan trọng của ngày này. “Câu tốt hơn” sẽ tự vào lịch ôn chủ động.</p><div id="dailyErrors"></div><button class="secondary" onclick="addErrorRow()">+ Thêm lỗi</button></section>

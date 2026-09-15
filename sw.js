@@ -1,4 +1,4 @@
-const CACHE='english90-v9';
+const CACHE='english90-v9-echoing-1';
 const CACHE_PREFIX='english90-';
 const ASSETS=['./','./index.html','./styles.css?v=9','./translations.js?v=9','./content-v9.js?v=9','./features-v9.js?v=9','./app.js?v=9','./manifest.json'];
 

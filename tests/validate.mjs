@@ -45,6 +45,17 @@ assert.match(features,/Trả lời trước để mở/,'Answers must start lock
 assert.match(features,/schemaVersion:9/,'Backup schema must be versioned');
 assert.match(features,/e90-data-version/,'v8 migration marker missing');
 assert.match(read('app.js'),/slot:'A'.*slot:'B'.*slot:'C'/s,'A/B/C recording plan missing');
+assert.match(html,/Echoing — Nghe và nhắc lại/,'Echoing practice UI missing');
+assert.match(read('app.js'),/function splitEchoText/,'Echoing chunking missing');
+assert.match(read('app.js'),/card:'echoingCard'/,'Echoing must be part of the full daily flow');
+assert.match(read('app.js'),/không phải điểm phát âm/,'ASR must not be presented as pronunciation scoring');
+const appSource=read('app.js'),echoStart=appSource.indexOf('function splitEchoText'),echoEnd=appSource.indexOf('\nfunction buildEchoItems',echoStart),echoSandbox={};
+vm.createContext(echoSandbox);vm.runInContext(`${appSource.slice(echoStart,echoEnd)}\nthis.splitEchoText=splitEchoText;`,echoSandbox);
+lessons.flatMap(lesson=>lesson.v9.shadowing).forEach(sentence=>{
+  const chunks=echoSandbox.splitEchoText(sentence.en);
+  assert.ok(chunks.every(chunk=>chunk.trim().split(/\s+/).length<=8),'Echoing chunks must contain at most 8 words');
+  assert.equal(chunks.join(' ').replace(/\s+/g,' ').trim(),sentence.en.replace(/\s+/g,' ').trim(),'Echoing chunking must preserve source text');
+});
 const sw=read('sw.js');assert.match(sw,/english90-v9/);for(const asset of ['content-v9.js?v=9','features-v9.js?v=9','app.js?v=9'])assert.ok(sw.includes(asset),`Offline cache missing ${asset}`);
 
 // Migration contract: normalize a legacy string phrase and preserve legacy recording as slot A metadata.

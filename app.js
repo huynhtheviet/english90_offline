@@ -54,8 +54,18 @@ let recordingStartedAt=0;
 let recordingSlot='A';
 let recordingAudioUrls={};
 let recordingMeta=JSON.parse(localStorage.getItem('e90-recording-meta')||'{}');
-let shadowingRun=0;
-let shadowingTimer=null;
+let echoingRun=0;
+let echoingTimer=null;
+let echoingRecorder=null;
+let echoingStream=null;
+let echoingItems=[];
+let echoingRecordingChunks=[];
+let echoingRecordingStartedAt=0;
+let echoingRecordingTimer=null;
+let echoingRecognition=null;
+let echoingAudioUrls={};
+let echoingState={day:0,index:0,attempts:{},heard:{},completed:false};
+let echoTransfers=JSON.parse(localStorage.getItem('e90-echo-transfers')||'{}');
 let conversationRecorder=null;
 let conversationStream=null;
 let conversationChunks=[];
@@ -70,8 +80,9 @@ let conversationAudioUrls={};
 const savedDailyFlow=JSON.parse(localStorage.getItem('e90-daily-flow-state')||'null');
 let dailyFlowState=savedDailyFlow?.day===current?{mode:savedDailyFlow.mode,index:savedDailyFlow.index||0}:{mode:null,index:0};
 let dailyCorrectionGoals=JSON.parse(localStorage.getItem('e90-correction-goals')||'{}');
-const defaultSettings={voiceURI:'',preferGoogleUS:true,rateMultiplier:1,pitch:1,showTranslations:false,shadowPause:4,voiceAccent:'all',voiceGender:'all',voiceLocalOnly:false,asrEnabled:false};
+const defaultSettings={voiceURI:'',preferGoogleUS:true,rateMultiplier:1,pitch:1,showTranslations:false,echoDelay:.5,voiceAccent:'all',voiceGender:'all',voiceLocalOnly:false,asrEnabled:false};
 let settings={...defaultSettings,...JSON.parse(localStorage.getItem('e90-settings')||'{}')};
+if(!Number.isFinite(Number(settings.echoDelay))) settings.echoDelay=.5;
 
 const slideTemplates = (L)=>[
   {title:E90_VI.title(L), body:E90_VI.objective(L)},
@@ -195,7 +206,7 @@ function formatReviewDate(timestamp){
   return `Ôn ${new Date(timestamp).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}`;
 }
 function openReview(reviewAll=false,onlyPhrases=null){
-  stopSpeak();saveNote();stopShadowingPractice();stopConversationPractice();stopRecording();
+  stopSpeak();saveNote();stopEchoingPractice();stopConversationPractice();stopRecording();
   document.getElementById('lessonView').hidden=true;
   document.getElementById('settingsPage').hidden=true;
   document.getElementById('hubPage').hidden=true;
@@ -319,33 +330,133 @@ function buildLessonQuiz(lesson){
   ].map((question,index)=>rotateQuestion(question,lesson.day+index));
 }
 
-function startShadowingPractice(){
-  stopShadowingPractice();
-  const run=shadowingRun,pairs=E90_VI.shadowing(lessons[current-1]);
-  const playNext=index=>{
-    if(run!==shadowingRun) return;
-    document.querySelectorAll('#shadow .translation-item').forEach((item,itemIndex)=>item.classList.toggle('practicing',itemIndex===index));
-    if(index>=pairs.length){
-      document.getElementById('shadowStatus').textContent='Hoàn thành lượt Shadowing!';
-      return;
+function splitEchoText(text){
+  const sentences=String(text).trim().match(/[^.!?]+[.!?]?/g)||[String(text).trim()];
+  return sentences.flatMap(sentence=>{
+    const words=sentence.trim().split(/\s+/).filter(Boolean);
+    const partCount=Math.max(1,Math.ceil(words.length/8));
+    const chunks=[];
+    let cursor=0;
+    for(let part=0;part<partCount;part++){
+      const remaining=words.length-cursor,partsLeft=partCount-part,size=Math.ceil(remaining/partsLeft);
+      chunks.push(words.slice(cursor,cursor+size).join(' '));cursor+=size;
     }
-    document.getElementById('shadowStatus').textContent=`Câu ${index+1}/${pairs.length} • Đang nghe…`;
-    speak(pairs[index].en,.82,()=>{
-      if(run!==shadowingRun) return;
-      document.getElementById('shadowStatus').textContent=`Câu ${index+1}/${pairs.length} • Hãy nói lại trong ${settings.shadowPause} giây`;
-      shadowingTimer=setTimeout(()=>playNext(index+1),settings.shadowPause*1000);
-    });
+    return chunks;
+  }).filter(Boolean);
+}
+function buildEchoItems(lesson){
+  return E90_VI.shadowing(lesson).flatMap((source,sentenceIndex)=>splitEchoText(source.en).map(text=>({text,source,sentenceIndex})));
+}
+function resetEchoingState(lesson=lessons[current-1]){
+  stopEchoingPractice();
+  Object.values(echoingAudioUrls).forEach(url=>URL.revokeObjectURL(url));echoingAudioUrls={};
+  echoingItems=buildEchoItems(lesson);
+  echoingState={day:lesson.day,index:0,attempts:{},heard:{},transcripts:{},feedback:{},completed:false};
+}
+function ensureEchoingState(lesson){
+  if(echoingState.day!==lesson.day||!echoingItems.length) resetEchoingState(lesson);
+}
+function echoMatchScore(expected,actual){
+  const words=value=>String(value).toLowerCase().replace(/[^a-z0-9']+/g,' ').trim().split(/\s+/).filter(Boolean);
+  const a=words(expected),b=words(actual),matrix=Array.from({length:a.length+1},()=>Array(b.length+1).fill(0));
+  for(let i=0;i<=a.length;i++)matrix[i][0]=i;
+  for(let j=0;j<=b.length;j++)matrix[0][j]=j;
+  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)matrix[i][j]=Math.min(matrix[i-1][j]+1,matrix[i][j-1]+1,matrix[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return a.length?Math.max(0,Math.round((1-matrix[a.length][b.length]/Math.max(a.length,b.length))*100)):0;
+}
+function echoFeedback(index){
+  const transcript=echoingState.transcripts[index];
+  if(!transcript)return '';
+  const score=echoMatchScore(echoingItems[index].text,transcript);
+  const label=score>=85?'Khớp nội dung tốt':score>=60?'Gần đúng — nghe lại và thử thêm một lượt':'Chưa khớp — hãy nói chậm theo từng cụm';
+  return `<div class="echo-asr"><b>${label} • ${score}%</b><span>Máy nghe được: “${escapeHtml(transcript)}”</span><small>Chỉ đo độ khớp từ, không phải điểm phát âm.</small></div>`;
+}
+function renderEchoingPractice(lesson=lessons[current-1]){
+  const root=document.getElementById('echoingPractice');if(!root)return;
+  ensureEchoingState(lesson);
+  const progress=document.getElementById('echoingProgress');
+  if(echoingState.completed){
+    const attempts=Object.values(echoingState.attempts).reduce((sum,value)=>sum+value,0),saved=echoTransfers[lesson.day]||'';
+    if(progress)progress.textContent=`${echoingItems.length}/${echoingItems.length} cụm đã luyện`;
+    root.innerHTML=`<div class="echo-complete"><div class="tagline">HOÀN THÀNH ECHOING</div><h3>Bạn đã luyện ${echoingItems.length} cụm trong ${attempts} lượt.</h3><p>Đổi một chi tiết để biến câu mẫu thành câu của bạn.</p><textarea id="echoTransfer" class="compact-textarea" placeholder="Ví dụ: đổi dự án, khách hàng hoặc thời hạn…" oninput="saveEchoTransfer(this.value)">${escapeHtml(saved)}</textarea><div class="practice-controls"><button class="secondary" onclick="playEchoTransfer()" ${saved.trim()?'':'disabled'}>▶ Nghe câu của tôi</button><button class="secondary" onclick="restartEchoingPractice()">↻ Luyện lại</button><button class="primary" onclick="continueAfterEchoing()">Tiếp tục Giao tiếp thực tế →</button></div></div>`;
+    return;
+  }
+  const index=echoingState.index,item=echoingItems[index],attempts=echoingState.attempts[index]||0,heard=!!echoingState.heard[index],audioUrl=echoingAudioUrls[index];
+  if(progress)progress.textContent=`Cụm ${index+1}/${echoingItems.length} • ${attempts} lượt`;
+  root.innerHTML=`<div class="echo-stage"><div class="echo-source"><span>Câu gốc ${item.sentenceIndex+1}/5</span><details><summary>Xem ngữ cảnh và nghĩa</summary><p>${escapeHtml(item.source.en)}</p><p lang="vi">${escapeHtml(item.source.vi)}</p></details></div><div class="echo-prompt"><div class="tagline">${heard?'NHẮC LẠI NGAY':'NGHE TRƯỚC — CHƯA NHÌN CHỮ'}</div><div class="echo-chunk${heard?'':' concealed'}">${heard?escapeHtml(item.text):'••••••'}</div><p id="echoingStatus" class="practice-status" aria-live="polite">${heard?'Hãy giữ nhịp và ngữ điệu, không chỉ đọc đúng từ.':'Bấm “Nghe mẫu” để bắt đầu.'}</p></div><div class="echo-actions"><button class="primary" onclick="playEchoModel()">▶ Nghe mẫu</button><button class="secondary" id="echoRecord" onclick="listenAndRecordEcho()">🎤 Nghe &amp; ghi</button><button class="danger" id="echoStop" onclick="stopEchoRecording()" hidden>■ Dừng ghi</button><button class="secondary" onclick="markEchoAttempt()">✓ Tôi đã nói</button></div><audio id="echoingPlayback" controls ${audioUrl?'':'hidden'}></audio>${settings.asrEnabled?echoFeedback(index):''}<div class="echo-navigation"><button class="secondary" onclick="retryEchoChunk()" ${attempts?'':'disabled'}>↻ Thử lại</button><button class="primary" onclick="nextEchoChunk()" ${attempts?'':'disabled'}>${index===echoingItems.length-1?'Hoàn thành ✓':'Ổn — cụm tiếp theo →'}</button></div></div>`;
+  const player=document.getElementById('echoingPlayback');if(player&&audioUrl)player.src=audioUrl;
+}
+function playEchoModel(onReady){
+  const index=echoingState.index,item=echoingItems[index];if(!item)return;
+  const run=++echoingRun;clearTimeout(echoingTimer);echoingState.heard[index]=true;renderEchoingPractice();
+  const status=document.getElementById('echoingStatus');if(status)status.textContent='Đang nghe mẫu…';
+  speak(item.text,.82,()=>{
+    if(run!==echoingRun)return;
+    const delay=Math.max(0,Number(settings.echoDelay)||0);
+    if(status)status.textContent=delay?`Giữ âm thanh trong đầu • bắt đầu sau ${String(delay).replace('.',',')} giây`:'Đến lượt bạn — hãy nói ngay!';
+    echoingTimer=setTimeout(()=>{if(run!==echoingRun)return;if(onReady)onReady(run);else if(status)status.textContent='Đến lượt bạn — hãy nói ngay!';},delay*1000);
+  });
+}
+async function listenAndRecordEcho(){
+  if(echoingRecorder?.state==='recording')return;
+  if(mediaRecorder?.state==='recording'||conversationRecorder?.state==='recording'||e90PracticeRecorder?.state==='recording'){const status=document.getElementById('echoingStatus');if(status)status.textContent='Hãy dừng bản ghi ở phần khác trước.';return;}
+  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){markEchoAttempt('Trình duyệt không hỗ trợ ghi âm. Lượt nói vẫn được tính.');return;}
+  try{
+    echoingStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    playEchoModel(run=>startEchoCapture(run));
+  }catch(error){const status=document.getElementById('echoingStatus');if(status)status.textContent='Không thể truy cập micro. Bạn vẫn có thể chọn “Tôi đã nói”.';}
+}
+function startEchoCapture(run){
+  if(run!==echoingRun||!echoingStream)return;
+  const index=echoingState.index,recorder=new MediaRecorder(echoingStream);echoingRecorder=recorder;echoingRecordingChunks=[];
+  recorder.ondataavailable=event=>{if(event.data.size)echoingRecordingChunks.push(event.data);};
+  recorder.onstop=()=>{
+    clearInterval(echoingRecordingTimer);echoingRecordingTimer=null;
+    echoingStream?.getTracks().forEach(track=>track.stop());echoingStream=null;
+    if(echoingRecordingChunks.length){if(echoingAudioUrls[index])URL.revokeObjectURL(echoingAudioUrls[index]);echoingAudioUrls[index]=URL.createObjectURL(new Blob(echoingRecordingChunks,{type:recorder.mimeType||'audio/webm'}));}
+    echoingState.attempts[index]=(echoingState.attempts[index]||0)+1;echoingState.feedback[index]='Đã ghi xong. Hãy nghe lại và so sánh với mẫu.';
+    if(echoingRecognition){try{echoingRecognition.stop();}catch(error){}echoingRecognition=null;}
+    echoingRecorder=null;echoingRecordingChunks=[];renderEchoingPractice();
+    const status=document.getElementById('echoingStatus');if(status)status.textContent=echoingState.feedback[index];
   };
-  playNext(0);
+  recorder.start();echoingRecordingStartedAt=Date.now();startEchoRecognition(index);
+  const record=document.getElementById('echoRecord'),stop=document.getElementById('echoStop');if(record)record.hidden=true;if(stop)stop.hidden=false;
+  const maxSeconds=Math.max(5,Math.min(12,Math.ceil(echoingItems[index].text.split(/\s+/).length*.8)+2));
+  echoingRecordingTimer=setInterval(()=>{const elapsed=Math.floor((Date.now()-echoingRecordingStartedAt)/1000),status=document.getElementById('echoingStatus');if(status)status.textContent=`Đang ghi • ${formatDuration(elapsed)} / ${formatDuration(maxSeconds)}`;if(elapsed>=maxSeconds)stopEchoRecording();},250);
 }
-function stopShadowingPractice(){
-  shadowingRun++;
-  clearTimeout(shadowingTimer);shadowingTimer=null;
-  stopSpeak();
-  document.querySelectorAll('#shadow .translation-item').forEach(item=>item.classList.remove('practicing'));
-  const status=document.getElementById('shadowStatus');if(status) status.textContent='';
+function startEchoRecognition(index){
+  if(!settings.asrEnabled)return;
+  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition)return;
+  const recognition=new Recognition();echoingRecognition=recognition;recognition.lang='en-US';recognition.interimResults=false;recognition.maxAlternatives=1;
+  recognition.onresult=event=>{const transcript=event.results?.[0]?.[0]?.transcript||'';if(transcript){echoingState.transcripts[index]=transcript;if(!echoingRecorder)renderEchoingPractice();}};
+  recognition.onerror=()=>{echoingState.feedback[index]='Không nhận được transcript; bản ghi âm vẫn được giữ để bạn tự so sánh.';};
+  try{recognition.start();}catch(error){echoingRecognition=null;}
 }
-function playShadowSentence(index){stopShadowingPractice();speak(E90_VI.shadowing(lessons[current-1])[index].en,.82);}
+function stopEchoRecording(){if(echoingRecorder?.state==='recording')echoingRecorder.stop();}
+function markEchoAttempt(message='Đã ghi nhận lượt nói. Bạn có thể thử lại hoặc sang cụm tiếp theo.'){
+  const index=echoingState.index;echoingState.heard[index]=true;echoingState.attempts[index]=(echoingState.attempts[index]||0)+1;renderEchoingPractice();const status=document.getElementById('echoingStatus');if(status)status.textContent=message;
+}
+function retryEchoChunk(){stopSpeak();echoingRun++;clearTimeout(echoingTimer);const status=document.getElementById('echoingStatus');if(status)status.textContent='Sẵn sàng cho lượt mới. Hãy nghe mẫu rồi nhắc lại ngay.';}
+function nextEchoChunk(){
+  if(!echoingState.attempts[echoingState.index])return;
+  stopSpeak();echoingRun++;clearTimeout(echoingTimer);
+  if(echoingState.index>=echoingItems.length-1)echoingState.completed=true;else echoingState.index++;
+  renderEchoingPractice();
+}
+function restartEchoingPractice(){resetEchoingState();renderEchoingPractice();}
+function saveEchoTransfer(value){echoTransfers[current]=value;localStorage.setItem('e90-echo-transfers',JSON.stringify(echoTransfers));}
+function playEchoTransfer(){const value=(echoTransfers[current]||'').trim();if(value)speak(value,.88);}
+function continueAfterEchoing(){
+  const activePlan=dailyFlowState.mode&&dailyFlowPlans[dailyFlowState.mode],activeStep=activePlan?.[dailyFlowState.index];
+  if(activeStep?.card==='echoingCard'){nextDailyFlowStep();return;}
+  document.getElementById('conversationCard')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function stopEchoingPractice(){
+  echoingRun++;clearTimeout(echoingTimer);echoingTimer=null;clearInterval(echoingRecordingTimer);echoingRecordingTimer=null;stopSpeak();
+  if(echoingRecorder?.state==='recording'){echoingRecorder.onstop=null;try{echoingRecorder.stop();}catch(error){}}
+  echoingRecorder=null;echoingStream?.getTracks().forEach(track=>track.stop());echoingStream=null;
+  if(echoingRecognition){try{echoingRecognition.abort();}catch(error){}echoingRecognition=null;}
+}
 
 function renderConversationTurn(turn,index,total){
   const partnerInitial=turn.prompt.speaker==='Người phỏng vấn'?'P':'Đ';
@@ -426,6 +537,7 @@ function startConversationPrompt(index){
 }
 async function startConversationRecording(index){
   const status=document.getElementById(`conversationTurnStatus${index}`);
+  if(echoingRecorder?.state==='recording'){if(status) status.textContent='Hãy dừng bản ghi Echoing trước.';return;}
   if(mediaRecorder?.state==='recording'){if(status) status.textContent='Hãy dừng bản ghi Speaking Practice trước.';return;}
   if(conversationRecorder?.state==='recording'){if(status) status.textContent='Một lượt khác đang được ghi âm.';return;}
   if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){if(status) status.textContent='Trình duyệt này không hỗ trợ ghi âm. Bạn vẫn có thể chọn “Tôi đã trả lời”.';return;}
@@ -515,6 +627,7 @@ async function loadRecordingSlot(day,slot){
 }
 async function startRecording(slot='A'){
   const status=document.getElementById(`recordingStatus${slot}`)||document.getElementById('recordingStatus');
+  if(echoingRecorder?.state==='recording'){status.textContent='Hãy dừng bản ghi Echoing trước.';return;}
   if(conversationRecorder?.state==='recording'){status.textContent='Hãy dừng bản ghi trong phần Giao tiếp thực tế trước.';return;}
   if(mediaRecorder?.state==='recording'){status.textContent=`Đang ghi bản ${recordingSlot}. Hãy dừng trước.`;return;}
   if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){status.textContent='Trình duyệt này không hỗ trợ ghi âm.';return;}
@@ -562,8 +675,9 @@ const dailyFlowPlans={
   full:[
     {card:'activeRecallCard',title:'Nhớ lại 3 Phrase',minutes:2},
     {card:'listeningCard',title:'Nghe và nắm ý chính',minutes:3},
+    {card:'echoingCard',title:'Echoing theo cụm ngắn',minutes:3},
     {card:'conversationCard',title:'Nghe và tự phản hồi',minutes:4},
-    {card:'speakingCard',title:'Nói lại A/B/C',minutes:8},
+    {card:'speakingCard',title:'Nói lại A/B/C',minutes:6},
     {card:'dailyWrapCard',title:'Tự đánh giá và lên lịch ôn',minutes:2}
   ]
 };
@@ -633,8 +747,8 @@ function syncSettingsControls(){
   document.getElementById('rateValue').textContent=`${Number(settings.rateMultiplier).toFixed(2)}×`;
   document.getElementById('pitchSetting').value=settings.pitch;
   document.getElementById('pitchValue').textContent=Number(settings.pitch).toFixed(2);
-  document.getElementById('shadowPauseSetting').value=settings.shadowPause;
-  document.getElementById('shadowPauseValue').textContent=`${settings.shadowPause} giây`;
+  document.getElementById('echoDelaySetting').value=settings.echoDelay;
+  document.getElementById('echoDelayValue').textContent=`${String(settings.echoDelay).replace('.',',')} giây`;
   document.getElementById('showTranslationsSetting').checked=!!settings.showTranslations;
   document.getElementById('voiceAccent').value=settings.voiceAccent||'all';
   document.getElementById('voiceGender').value=settings.voiceGender||'all';
@@ -644,7 +758,7 @@ function syncSettingsControls(){
   loadVoiceOptions();
 }
 function openSettings(){
-  stopShadowingPractice();stopConversationPractice();stopRecording();saveNote();
+  stopEchoingPractice();stopConversationPractice();stopRecording();saveNote();
   document.getElementById('lessonView').hidden=true;
   document.getElementById('reviewPage').hidden=true;
   document.getElementById('hubPage').hidden=true;
@@ -662,7 +776,7 @@ function closeSettings(){
 function setVoice(value){settings.voiceURI=value;settings.preferGoogleUS=false;saveSettings();}
 function setRate(value){settings.rateMultiplier=Number(value);document.getElementById('rateValue').textContent=`${settings.rateMultiplier.toFixed(2)}×`;saveSettings();}
 function setPitch(value){settings.pitch=Number(value);document.getElementById('pitchValue').textContent=settings.pitch.toFixed(2);saveSettings();}
-function setShadowPause(value){settings.shadowPause=Number(value);document.getElementById('shadowPauseValue').textContent=`${settings.shadowPause} giây`;saveSettings();}
+function setEchoDelay(value){settings.echoDelay=Number(value);document.getElementById('echoDelayValue').textContent=`${String(settings.echoDelay).replace('.',',')} giây`;saveSettings();}
 function setShowTranslations(checked){settings.showTranslations=checked;saveSettings();}
 function previewVoice(){speak('Hello! This is your English 90 practice voice.',1);}
 function resetSettings(){settings={...defaultSettings};saveSettings();syncSettingsControls();stopSpeak();}
@@ -683,7 +797,7 @@ function render(){
   document.getElementById('framework').innerHTML=translationItem(E90_VI.framework(L),'framework-translation');
   document.getElementById('phrases').innerHTML=L.phrases.map(phraseBlock).join('');
   renderConversationExperience(L);
-  document.getElementById('shadow').innerHTML=E90_VI.shadowing(L).map((item,index)=>translationItem(item,'',`<button type="button" class="audio-btn" aria-label="Nghe riêng câu này" title="Nghe riêng câu này" onclick="playShadowSentence(${index})">▶</button>`)).join('');
+  renderEchoingPractice(L);
   document.getElementById('speaking').innerHTML=translationList(E90_VI.speaking(L));
   document.getElementById('challenge').innerHTML=translationList(E90_VI.challenge(L));
   document.getElementById('notes').value=notes[L.day]||'';
@@ -707,7 +821,7 @@ function renderVideo(){
 function nextSlide(){const n=slideTemplates(lessons[current-1]).length;slideIndex=(slideIndex+1)%n;renderVideo();}
 function prevSlide(){const n=slideTemplates(lessons[current-1]).length;slideIndex=(slideIndex-1+n)%n;renderVideo();}
 function narrateSlide(){const L=lessons[current-1],s=slideTemplates(L)[slideIndex];speak(`${s.title.en}. ${s.body.map(item=>item.en).join(' ')}`,0.88);}
-function selectDay(d){stopShadowingPractice();stopRecording();exitDailyFlow(false);current=d;localStorage.setItem('e90-current',d);render();window.scrollTo({top:0,behavior:'smooth'});}
+function selectDay(d){stopEchoingPractice();stopRecording();exitDailyFlow(false);current=d;localStorage.setItem('e90-current',d);render();window.scrollTo({top:0,behavior:'smooth'});}
 function saveNote(){notes[current]=document.getElementById('notes').value;localStorage.setItem('e90-notes',JSON.stringify(notes));}
 function toggleDone(){progress[current]=document.getElementById('done').checked;localStorage.setItem('e90-progress',JSON.stringify(progress));renderSidebar();}
 function gradeQuiz(){
@@ -717,7 +831,6 @@ function gradeQuiz(){
 }
 function revealListening(){const el=document.getElementById('listenWrap');el.hidden=!el.hidden;}
 function startListening(){speak(lessons[current-1].listening,0.88);}
-function startShadowing(){speak(lessons[current-1].shadowing,0.82);}
 function resetProgress(){if(confirm('Reset all 90-day progress and notes?')){localStorage.clear();location.reload();}}
 window.addEventListener('beforeunload',saveNote);
 if('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged',loadVoiceOptions);

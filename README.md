@@ -12,8 +12,9 @@ Phiên bản hiện tại: **v9** — hoàn thiện roadmap luyện giao tiếp 
 - Toàn bộ 90 ngày, transcript, phrases, quiz, speaking prompts đều nằm trong website.
 - Mỗi câu tiếng Anh có nút hiện/ẩn bản dịch tiếng Việt; toàn bộ bản dịch nằm sẵn trong `translations.js`.
 - Trang Cài đặt cho phép chọn giọng tiếng Anh của thiết bị, chỉnh tốc độ, cao độ và tự động hiện bản dịch. Ứng dụng ưu tiên `Google US English — en-US` khi có sẵn, nếu không sẽ dùng giọng mặc định của thiết bị.
-- Listening, shadowing và “video lesson” dùng giọng `SpeechSynthesis` có sẵn trên thiết bị.
-- Chế độ shadowing đọc lần lượt từng câu và cho phép chỉnh khoảng nghỉ để nói lại.
+- Listening, Echoing và “video lesson” dùng giọng `SpeechSynthesis` có sẵn trên thiết bị.
+- Echoing chia câu thành cụm tối đa 8 từ, cho phép nghe trước khi nhìn chữ, ghi âm, nghe lại mẫu và bản thân, thử lại có chủ đích và tự viết một phiên bản cá nhân hóa.
+- Speech Recognition là tùy chọn thử nghiệm: nếu trình duyệt hỗ trợ, app chỉ báo độ khớp nội dung của lượt Echoing, không coi đó là điểm phát âm.
 - Ghi âm phần luyện nói theo từng ngày, nghe lại và lưu trực tiếp trên thiết bị bằng IndexedDB.
 - Mỗi ngày có 8 useful phrases được chọn riêng theo đúng chủ đề; 3 Phrase cốt lõi được tự động đưa vào lịch ôn thích nghi và vẫn có thể đánh dấu thêm bằng biểu tượng sao.
 - Mỗi useful phrase có ít nhất 3 ví dụ công việc thực tế, kèm nút nghe và bản dịch tiếng Việt có sẵn.
@@ -27,7 +28,7 @@ Phiên bản hiện tại: **v9** — hoàn thiện roadmap luyện giao tiếp 
 ## Tính năng v9
 
 - 180 Phrase thực tế thuộc 14 nhóm chức năng; mỗi Phrase xuất hiện trong 4 ngày và có bản dịch cùng ví dụ offline.
-- 90 Listening script riêng (khoảng 45–90 giây), đồng bộ scenario với Shadowing và Conversation.
+- 90 Listening script riêng (khoảng 45–90 giây), đồng bộ scenario với Echoing và Conversation.
 - Listening Ladder bốn tầng: nghe không chữ, nghe theo đoạn ở ba tốc độ, transcript có highlight và bản dịch mở sau cùng; câu hỏi/đáp án luôn khóa cho đến khi người học trả lời.
 - Hội thoại response-first có ba nhánh đồng ý, không đồng ý và cần thêm thông tin; kết thúc bằng quyết định, owner/deadline/follow-up và bản tóm tắt.
 - Sổ lỗi tối đa ba lỗi mỗi bài nói, ghi âm nói lại, đánh dấu đã sửa và tự đưa câu cải thiện vào lịch ôn.
