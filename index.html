@@ -104,8 +104,19 @@
   <div class="controls"><button onclick="prevSlide()">← Trước</button><button onclick="narrateSlide()">▶ Nghe</button><button onclick="stopSpeak()">■ Dừng</button><button onclick="nextSlide()">Tiếp →</button></div></div>
   <p class="small">Video lesson chạy bằng slide + giọng đọc có sẵn của thiết bị, nên dùng được offline và không cần YouTube.</p>
 </section>
-<section class="card" id="frameworkCard"><h2>🧠 Framework</h2><div class="bigtext" id="framework"></div></section>
-<section class="card" id="phrasesCard"><h2>🗣️ Useful Phrases</h2><div id="phrases"></div></section>
+<section class="card" id="frameworkCard">
+  <div class="lesson-section-heading">
+    <div class="lesson-section-title"><span class="lesson-section-icon" aria-hidden="true">🧠</span><div><h2>Framework</h2><p>Đi theo từng bước để câu trả lời rõ ràng và dễ theo dõi.</p></div></div>
+  </div>
+  <div id="framework"></div>
+</section>
+<section class="card" id="phrasesCard">
+  <div class="lesson-section-heading">
+    <div class="lesson-section-title"><span class="lesson-section-icon phrases-icon" aria-hidden="true">🗣️</span><div><h2>Useful Phrases</h2><p>Chọn một cụm, nghe mẫu rồi mở ví dụ khi cần.</p></div></div>
+    <span class="section-count">8 cụm hôm nay</span>
+  </div>
+  <div id="phrases"></div>
+</section>
 <section class="card wide conversation-card" id="conversationCard"><div class="conversation-section-heading"><div><h2>🤝 Giao tiếp thực tế</h2><p class="small">Nghe câu hỏi, tự trả lời trước, sau đó mới xem Phrase gợi ý và câu mẫu.</p></div><div class="conversation-progress" id="conversationProgress"></div></div><div id="conversationContext"></div><div id="conversation"></div></section>
 <section class="card wide listening-ladder" id="listeningCard"><h2>🎧 Listening Ladder</h2>
   <div class="ladder-tabs" id="listeningLevels"></div><div id="listeningStage"></div>

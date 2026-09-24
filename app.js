@@ -122,6 +122,17 @@ function phraseBlock(phrase){
     audioButton(example.en,'Nghe câu ví dụ')
   )).join('')}</div></details></div>`;
 }
+function frameworkBlock(lesson){
+  const englishSteps=lesson.framework.steps.split(' → ');
+  const vietnameseSteps=(E90_VI.frameworkSteps[lesson.framework.steps]||lesson.framework.steps).split(' → ');
+  const expanded=!!settings.showTranslations;
+  const translationLabel=expanded?'Ẩn nghĩa tiếng Việt':'Hiện nghĩa tiếng Việt';
+  return `<div class="framework-board steps-${englishSteps.length}" style="--framework-columns:${englishSteps.length}"><div class="framework-summary"><span class="framework-kicker">Khung trả lời</span><strong>${escapeHtml(lesson.framework.name)}</strong><span>${englishSteps.length} bước</span><button type="button" class="translate-btn framework-translate${expanded?' active':''}" aria-label="${translationLabel}" title="${translationLabel}" aria-expanded="${expanded}" onclick="toggleFrameworkTranslation(this)">🌐</button></div><ol class="framework-steps">${englishSteps.map((step,index)=>`<li class="framework-step"><span class="framework-step-number">${String(index+1).padStart(2,'0')}</span><span class="framework-step-copy"><strong>${escapeHtml(step)}</strong><span class="framework-step-vi"${expanded?'':' hidden'} lang="vi">${escapeHtml(vietnameseSteps[index]||step)}</span></span>${index<englishSteps.length-1?'<span class="framework-arrow" aria-hidden="true">→</span>':''}</li>`).join('')}</ol></div>`;
+}
+function phraseColumns(phrases){
+  const midpoint=Math.ceil(phrases.length/2);
+  return [phrases.slice(0,midpoint),phrases.slice(midpoint)].filter(column=>column.length).map(column=>`<div class="phrase-column">${column.map(phraseBlock).join('')}</div>`).join('');
+}
 function toggleTranslation(button){
   const item=button.closest('.translation-item');
   const translation=item.querySelector(':scope > .vi-translation');
@@ -130,6 +141,15 @@ function toggleTranslation(button){
   button.setAttribute('aria-expanded',String(willShow));
   button.setAttribute('aria-label',willShow?'Ẩn bản dịch':'Dịch sang tiếng Việt');
   button.setAttribute('title',willShow?'Ẩn bản dịch':'Dịch sang tiếng Việt');
+  button.classList.toggle('active',willShow);
+}
+function toggleFrameworkTranslation(button){
+  const translations=[...button.closest('.framework-board').querySelectorAll('.framework-step-vi')];
+  const willShow=translations.some(translation=>translation.hidden);
+  translations.forEach(translation=>{translation.hidden=!willShow;});
+  button.setAttribute('aria-expanded',String(willShow));
+  button.setAttribute('aria-label',willShow?'Ẩn nghĩa tiếng Việt':'Hiện nghĩa tiếng Việt');
+  button.setAttribute('title',willShow?'Ẩn nghĩa tiếng Việt':'Hiện nghĩa tiếng Việt');
   button.classList.toggle('active',willShow);
 }
 
@@ -794,8 +814,8 @@ function render(){
   document.getElementById('phase').innerHTML=translationItem({en:L.phase,vi:E90_VI.phases[L.phase]},'hero-translation');
   document.getElementById('title').innerHTML=translationItem(E90_VI.title(L),'hero-translation');
   document.getElementById('objective').innerHTML=translationList(E90_VI.objective(L),'hero-translation');
-  document.getElementById('framework').innerHTML=translationItem(E90_VI.framework(L),'framework-translation');
-  document.getElementById('phrases').innerHTML=L.phrases.map(phraseBlock).join('');
+  document.getElementById('framework').innerHTML=frameworkBlock(L);
+  document.getElementById('phrases').innerHTML=phraseColumns(L.phrases);
   renderConversationExperience(L);
   renderEchoingPractice(L);
   document.getElementById('speaking').innerHTML=translationList(E90_VI.speaking(L));
